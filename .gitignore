@@ -204,3 +204,6 @@ __marimo__/
 
 # VS Code
 .vscode
+
+# API Client Session Cache
+.cache.sqlite
