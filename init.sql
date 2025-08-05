@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS history (
+    idx INTEGER PRIMARY KEY AUTO_INCREMENT,
+    latitude FLOAT NOT NULL,
+    longitude FLOAT NOT NULL,
+    date DATE NOT NULL,
+    temperature_2m_mean FLOAT,
+    temperature_2m_max FLOAT,
+    temperature_2m_min FLOAT,
+    cloud_cover_mean FLOAT,
+    cloud_cover_max FLOAT,
+    cloud_cover_min FLOAT,
+    wind_gusts_10m_mean FLOAT,
+    wind_speed_10m_mean FLOAT,
+    wind_gusts_10m_min FLOAT,
+    wind_speed_10m_min FLOAT,
+    wind_speed_10m_max FLOAT,
+    wind_gusts_10m_max FLOAT,
+    sunshine_duration FLOAT,
+    precipitation_sum FLOAT,
+    precipitation_hours FLOAT
+);

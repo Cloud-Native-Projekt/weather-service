@@ -1,0 +1,26 @@
+{
+    "bounding_box": {
+        "north_boundary": 37.0,
+        "south_boundary": 36.0,
+        "west_boundary": 9.0,
+        "east_boundary": 10.0
+    },
+    "history_start_date": "2001-01-01",
+    "metrics_daily": [
+        "temperature_2m_mean",
+        "temperature_2m_max",
+        "temperature_2m_min",
+        "cloud_cover_mean",
+        "cloud_cover_max",
+        "cloud_cover_min",
+        "wind_gusts_10m_mean",
+        "wind_speed_10m_mean",
+        "wind_gusts_10m_min",
+        "wind_speed_10m_min",
+        "wind_speed_10m_max",
+        "wind_gusts_10m_max",
+        "sunshine_duration",
+        "precipitation_sum",
+        "precipitation_hours"
+    ]
+}
