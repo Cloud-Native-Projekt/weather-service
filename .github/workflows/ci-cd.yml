@@ -27,8 +27,11 @@ jobs:
       - name: Install linters
         run: pip install flake8 black mypy
 
-      - name: Run linters
-        run: |
-          flake8 . --max-line-length=120 --extend-ignore=E203,W503 --exclude=build,dist,.venv
-          black . --line-length=120 --target-version=py313
-          mypy .
+      - name: Run flake8
+        run: flake8 . --max-line-length=120 --extend-ignore=E203,W503 --exclude=build,dist,.venv
+
+      - name: Run black
+        run: black . --line-length=120 --target-version=py313 --check
+
+      - name: Run mypy
+        run: mypy . --install-types
