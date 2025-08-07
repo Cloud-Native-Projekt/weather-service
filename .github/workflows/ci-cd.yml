@@ -36,7 +36,6 @@ jobs:
   test:
     runs-on: ubuntu-latest
     name: Run Tests
-    needs: lint
     steps:
       - uses: actions/checkout@v4
 
@@ -51,7 +50,6 @@ jobs:
   codeql:
     runs-on: ubuntu-latest
     name: CodeQL Analysis
-    needs: test
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -72,7 +70,7 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     name: Docker Build & Push
-    needs: codeql
+    needs: [lint, test, codeql]
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v4.2.2
