@@ -20,15 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4.2.2
 
-      - name: Set up Python
-        uses: actions/setup-python@v5.6.0
-        with:
-          python-version: '3.13'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r ./openmeteo_client/requirements.txt
+      - uses: ./.github/actions/python-setup
 
       - name: Install linters
         run: pip install flake8 black mypy
@@ -48,15 +40,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5.6.0
-        with:
-            python-version: '3.13'
+      - uses: ./.github/actions/python-setup
 
-      - name: Install dependencies
+      - name: Install test dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r ./openmeteo_client/requirements.txt
           pip install pytest
 
       - name: Run tests
@@ -71,15 +58,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r ./openmeteo_client/requirements.txt
+      - uses: ./.github/actions/python-setup
 
       - name: Init CodeQL
         uses: github/codeql-action/init@v3
