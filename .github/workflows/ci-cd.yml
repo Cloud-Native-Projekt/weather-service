@@ -40,3 +40,22 @@ jobs:
 
       - name: Run mypy
         run: mypy . --install-types --non-interactive
+  test:
+    runs-on: ubuntu-latest
+    name: Run Tests
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+            python-version: '3.13'
+
+      - name: Install dependencies
+        run: |
+            pip install -r requirements.txt
+            pip install pytest
+
+      - name: Run tests
+        run: pytest
