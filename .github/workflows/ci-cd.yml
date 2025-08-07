@@ -5,6 +5,7 @@ on:
     branches:
       - 'feature/**'
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -93,6 +94,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Docker Build & Push
     needs: codeql
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v4.2.2
 
