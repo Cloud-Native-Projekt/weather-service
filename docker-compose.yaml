@@ -10,7 +10,7 @@ services:
       MYSQL_PASSWORD: mypassword
     volumes:
       - mariadb_data:/var/lib/mysql
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    # - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "3306:3306"
     healthcheck:
@@ -20,17 +20,60 @@ services:
       timeout: 5s
       retries: 3
 
-  openmeteo_client:
+  db_init:
     build:
-      context: ./openmeteo_client
-      dockerfile: Dockerfile
-    container_name: openmeteo_client
-    restart: on-failure
-    ports:
-      - "8000:8000"
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: db_init
+    restart: no
+    environment:
+      MYSQL_HOST: mariadb
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: weatherdb
+      MYSQL_USER: myuser
+      MYSQL_PASSWORD: mypassword
     depends_on:
       mariadb:
         condition: service_healthy
+        restart: true
+
+
+# openmeteo_client:
+#   build:
+#     context: ./openmeteo_client
+#     dockerfile: Dockerfile
+#   container_name: openmeteo_client
+#   restart: on-failure
+#   environment:
+#     MYSQL_HOST: mariadb
+#     MYSQL_PORT: 3306
+#     MYSQL_DATABASE: weatherdb
+#     MYSQL_USER: myuser
+#     MYSQL_PASSWORD: mypassword
+#   depends_on:
+#     mariadb:
+#       condition: service_healthy
+#     db_init:
+#       condition: service_completed_successfully
+
+# api:
+#   build:
+#     context: ./api
+#     dockerfile: Dockerfile
+#   container_name: api
+#   restart: on-failure
+#   environment:
+#     MYSQL_HOST: mariadb
+#     MYSQL_PORT: 3306
+#     MYSQL_DATABASE: weatherdb
+#     MYSQL_USER: myuser
+#     MYSQL_PASSWORD: mypassword
+#   ports:
+#     - "8001:8001"
+#   depends_on:
+#     mariadb:
+#       condition: service_healthy
+
 
 volumes:
   mariadb_data:

@@ -1,0 +1,372 @@
+import json
+import os
+from abc import ABC, abstractmethod
+from datetime import date, datetime, timedelta
+from time import sleep
+from typing import Any, Dict, List
+
+import numpy as np
+import openmeteo_requests
+import pandas as pd
+import requests_cache
+from niquests import Session
+from numpy.typing import NDArray
+from openmeteo_sdk.VariablesWithTime import VariablesWithTime
+from openmeteo_sdk.VariableWithValues import VariableWithValues
+from openmeteo_sdk.WeatherApiResponse import WeatherApiResponse
+from retry_requests import retry
+from sqlalchemy import delete, distinct, func, select
+from sqlalchemy.orm import Session, sessionmaker
+
+from models import DailyWeatherHistory, DatabaseEngine
+
+
+class OpenMeteoClient(ABC, openmeteo_requests.Client):
+
+    SESSION = retry(
+        requests_cache.CachedSession(".cache", expire_after=-1),
+        retries=5,
+        backoff_factor=60,
+    )
+
+    CONFIG_FILE = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "config.json"
+    )
+
+    MINUTELY_RATE_LIMIT = 600
+    HOURLY_RATE_LIMIT = 5000
+    DAILY_RATE_LIMIT = 10000
+    MINUTELY_BACKOFF = 61
+    HOURLY_BACKOFF = 3601
+    DAILY_BACKOFF = 86401
+    FRACTIONAL_API_COST = 31.3
+
+    def __init__(self, session: Session = SESSION):  # type: ignore
+        """_summary_
+
+        Args:
+            session (Session, optional): _description_. Defaults to SESSION.
+        """
+        super().__init__(session)  # type: ignore
+
+    @abstractmethod
+    def check_data_exists(self) -> bool:
+        """_summary_
+
+        Args:
+            table (str): _description_
+
+        Returns:
+            bool: _description_
+        """
+        pass
+
+    def get_data(self, url: str, params: Dict[str, Any]) -> List[WeatherApiResponse]:
+        """_summary_
+
+        Args:
+            url (str): URL of the API endpoint
+            params (Dict[str, Any): Dictionary containing the query params of the API request
+
+        Returns:
+            List[WeatherApiResponse]: List of responses from the OpenMeteo Weather API
+        """
+        responses = []
+
+        locations: NDArray[np.float64] = params["locations"]
+
+        years = list(
+            range(
+                datetime.strptime(params["start_date"], "%Y-%m-%d").date().year,
+                datetime.strptime(params["end_date"], "%Y-%m-%d").date().year + 1,
+            )
+        )
+
+        num_requests = locations.shape[0] * len(years)
+        if num_requests <= OpenMeteoClient.MINUTELY_RATE_LIMIT:
+            time_estimate = 0.0
+        elif (
+            OpenMeteoClient.MINUTELY_RATE_LIMIT
+            < num_requests
+            <= OpenMeteoClient.HOURLY_RATE_LIMIT
+        ):
+            time_estimate = (
+                int(
+                    (num_requests - OpenMeteoClient.MINUTELY_RATE_LIMIT)
+                    / OpenMeteoClient.MINUTELY_RATE_LIMIT
+                )
+                * OpenMeteoClient.MINUTELY_BACKOFF
+            )
+        elif (
+            OpenMeteoClient.HOURLY_RATE_LIMIT
+            < num_requests
+            <= OpenMeteoClient.DAILY_RATE_LIMIT
+        ):
+            time_estimate = (
+                int(
+                    (num_requests - OpenMeteoClient.HOURLY_RATE_LIMIT)
+                    / OpenMeteoClient.HOURLY_RATE_LIMIT
+                )
+                * OpenMeteoClient.HOURLY_BACKOFF
+            )
+        elif OpenMeteoClient.DAILY_RATE_LIMIT < num_requests:
+            time_estimate = (
+                int(
+                    (num_requests - OpenMeteoClient.DAILY_RATE_LIMIT)
+                    / OpenMeteoClient.DAILY_RATE_LIMIT
+                )
+                * OpenMeteoClient.DAILY_BACKOFF
+            )
+        else:
+            time_estimate = 0.0
+
+        print(
+            f"Processing {num_requests} requests costing an estimated {OpenMeteoClient.FRACTIONAL_API_COST * num_requests} API calls.\nThis will take ~ {str(timedelta(seconds=time_estimate))}"
+        )
+
+        minutely_usage = 0.0
+        hourly_usage = 0.0
+        daily_usage = 0.0
+
+        for location in locations:
+            for year in years:
+                start_date = date(year, 1, 1)
+                end_date = (
+                    date(year, 12, 31)
+                    if year < date.today().year
+                    else params["end_date"]
+                )
+                fractional_query_params = {
+                    "latitude": location[0],
+                    "longitude": location[1],
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "daily": params["daily"],
+                }
+
+                fractional_responses = self.weather_api(
+                    url, params=fractional_query_params
+                )
+
+                responses.append(*fractional_responses)
+
+                minutely_usage, hourly_usage, daily_usage = (
+                    minutely_usage + OpenMeteoClient.FRACTIONAL_API_COST,
+                    hourly_usage + OpenMeteoClient.FRACTIONAL_API_COST,
+                    daily_usage + OpenMeteoClient.FRACTIONAL_API_COST,
+                )
+
+                if (
+                    minutely_usage + OpenMeteoClient.FRACTIONAL_API_COST
+                    >= OpenMeteoClient.MINUTELY_RATE_LIMIT
+                ):
+                    sleep(OpenMeteoClient.MINUTELY_BACKOFF)
+                    minutely_usage = 0.0
+                if (
+                    hourly_usage + OpenMeteoClient.FRACTIONAL_API_COST
+                    >= OpenMeteoClient.HOURLY_RATE_LIMIT
+                ):
+                    sleep(OpenMeteoClient.HOURLY_BACKOFF)
+                    minutely_usage = 0.0
+                    hourly_usage = 0.0
+                if (
+                    daily_usage + OpenMeteoClient.FRACTIONAL_API_COST
+                    >= OpenMeteoClient.DAILY_RATE_LIMIT
+                ):
+                    sleep(OpenMeteoClient.DAILY_BACKOFF)
+                    minutely_usage = 0.0
+                    hourly_usage = 0.0
+                    daily_usage = 0.0
+
+        return responses
+
+    def extract_variable(
+        self, variable_index: int, variables: VariablesWithTime
+    ) -> np.ndarray:
+        """_summary_
+
+        Args:
+            variable_index (int): _description_
+            variables (VariablesWithTime): _description_
+
+        Raises:
+            TypeError: _description_
+
+        Returns:
+            np.ndarray: _description_
+        """
+        variable = variables.Variables(variable_index)
+
+        if isinstance(variable, VariableWithValues):
+            values = variable.ValuesAsNumpy()
+        else:
+            raise TypeError(
+                f"Error during variable extraction. Expected type: {VariableWithValues} Got: {type(variable)} instead."
+            )
+
+        return values
+
+    def process_response(
+        self, response: WeatherApiResponse, params: Dict[str, Any]
+    ) -> pd.DataFrame:
+        """_summary_
+
+        Args:
+            response (WeatherApiResponse): _description_
+            params (Dict[str, Any]): _description_
+
+        Raises:
+            TypeError: _description_
+
+        Returns:
+            pd.DataFrame: _description_
+        """
+        daily = response.Daily()
+
+        if isinstance(daily, VariablesWithTime):
+            variables = [
+                self.extract_variable(idx, daily) for idx in range(len(params["daily"]))
+            ]
+
+            daily_data = {
+                "date": pd.date_range(
+                    start=pd.to_datetime(daily.Time(), unit="s", utc=True),
+                    end=pd.to_datetime(daily.TimeEnd(), unit="s", utc=True),
+                    freq=pd.Timedelta(seconds=daily.Interval()),
+                    inclusive="left",
+                )
+            }
+
+            for idx, variable_name in enumerate(params["daily"]):
+                daily_data[variable_name] = variables[idx].tolist()
+
+        else:
+            raise TypeError(
+                f"Error during processing response. Expected type: {VariablesWithTime} Got: {type(daily)} instead."
+            )
+
+        return pd.DataFrame(data=daily_data)
+
+    @abstractmethod
+    def main(self) -> None:
+        """_summary_
+
+        Raises:
+            TypeError: _description_
+            TypeError: _description_
+
+        Returns:
+            _type_: _description_
+        """
+        pass
+
+
+class OpenMeteoArchiveClient(OpenMeteoClient):
+
+    URL = "https://archive-api.open-meteo.com/v1/archive"
+
+    def __init__(self, session: Session = OpenMeteoClient.SESSION):  # type: ignore
+        """_summary_
+
+        Args:
+            session (Session, optional): _description_. Defaults to SESSION.
+        """
+        super().__init__(session)
+
+        self.DB_SESSION = sessionmaker(bind=DatabaseEngine().get_engine)()
+
+        with open(file=OpenMeteoClient.CONFIG_FILE, mode="r") as file:
+            config = json.load(fp=file)
+            file.close()
+
+        latitude_range = np.arange(
+            config["bounding_box"]["south_boundary"],
+            config["bounding_box"]["north_boundary"],
+            0.5,
+        )
+        longitude_range = np.arange(
+            config["bounding_box"]["west_boundary"],
+            config["bounding_box"]["east_boundary"],
+            0.5,
+        )
+        lat_grid, lon_grid = np.meshgrid(latitude_range, longitude_range, indexing="ij")
+        locations = np.column_stack([lat_grid.ravel(), lon_grid.ravel()])
+
+        self.QUERY_PARAMS = {
+            "locations": locations,
+            "start_date": config["history_start_date"],
+            "end_date": (datetime.today() - timedelta(days=2)).strftime("%Y-%m-%d"),
+            "daily": config["metrics_daily"],
+        }
+
+    def check_data_exists(self) -> bool:
+        """_summary_
+
+        Args:
+            table (str): _description_
+
+        Returns:
+            bool: _description_
+        """
+        expected_start_date = datetime.strptime(
+            self.QUERY_PARAMS["start_date"], "%Y-%m-%d"
+        ).date()
+        expected_end_date = datetime.strptime(
+            self.QUERY_PARAMS["end_date"], "%Y-%m-%d"
+        ).date()
+        start_date = self.DB_SESSION.scalar(select(func.min(DailyWeatherHistory.date)))
+        end_date = self.DB_SESSION.scalar(select(func.max(DailyWeatherHistory.date)))
+        date_range = self.DB_SESSION.scalars(
+            select(distinct(DailyWeatherHistory.date))
+        ).all()
+
+        if isinstance(start_date, date) and isinstance(end_date, date):
+            if (
+                start_date == expected_start_date
+                and end_date == expected_end_date
+                and len(date_range) == (end_date - start_date).days + 1
+            ):
+                return True
+            else:
+                print(
+                    f"Schema:\nStart Date : {start_date}, End Date: {end_date}, Date Range: {len(date_range)} days\nDoes not match expected schema:\nStart Date : {expected_start_date}, End Date: {expected_end_date}, Date Range: {(end_date - start_date).days + 1} days"
+                )
+                return False
+        else:
+            print(
+                f"Data does not match expected type:\nStart Date: {start_date} Type: {type(start_date)}; End Date: {end_date} Type: {type(end_date)}"
+            )
+            return False
+
+    def main(self) -> None:
+        """_summary_"""
+        if not self.check_data_exists():
+            self.DB_SESSION.execute(delete(DailyWeatherHistory))
+            data = pd.DataFrame()
+            for response in self.get_data(
+                url=OpenMeteoArchiveClient.URL, params=self.QUERY_PARAMS
+            ):
+                processed_response = self.process_response(
+                    response=response, params=self.QUERY_PARAMS
+                )
+
+                processed_response["latitude"] = response.Latitude()
+                processed_response["longitude"] = response.Longitude()
+
+                data = pd.concat([data, processed_response], axis=0)
+
+            data["date"] = pd.to_datetime(
+                data["date"], format="%Y-%m-%d %H:%M:%S"
+            ).dt.strftime("%Y-%m-%d")
+
+            records = data.to_dict(orient="records")
+            orm_objects = [
+                DailyWeatherHistory(**{str(k): v for k, v in row.items()})
+                for row in records
+            ]
+
+            self.DB_SESSION.add_all(orm_objects)
+            self.DB_SESSION.commit()
+            self.DB_SESSION.close()
+        else:
+            print("Data exists as expected.")

@@ -12,13 +12,16 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 WORKDIR /app/
 
 # Copy requirements
-COPY requirements.txt .
+COPY backend/requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy models
+COPY models/ ./models/
+
 # Copy application code
-COPY . .
+COPY backend/ .
 
 # Change ownership to non-root user
 RUN chown -R appuser:appuser /app
@@ -26,12 +29,5 @@ RUN chown -R appuser:appuser /app
 # Switch to non-root user
 USER appuser
 
-# Add health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
-# Expose port
-EXPOSE 8000
-
 # Entry point
-CMD ["python", "openmeteo_client.py"]
+CMD ["python", "db_init.py"]
