@@ -26,8 +26,8 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
 
     SESSION = retry(
         requests_cache.CachedSession(".cache", expire_after=86399),
-        retries=5,
-        backoff_factor=60,
+        retries=10,
+        backoff_factor=2,
     )
 
     CONFIG_FILE = os.path.join(
