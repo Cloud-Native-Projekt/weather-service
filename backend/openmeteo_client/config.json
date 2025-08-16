@@ -6,6 +6,8 @@
         "east_boundary": 10.0
     },
     "history_start_date": "2020-01-01",
+    "forecast_past_days": 1,
+    "forecast_days": 16,
     "metrics_daily": [
         "temperature_2m_mean",
         "temperature_2m_max",

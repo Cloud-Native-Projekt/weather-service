@@ -1,1 +1,1 @@
-from .openmeteo_client import OpenMeteoArchiveClient
+from .openmeteo_client import OpenMeteoArchiveClient, OpenMeteoForecastClient

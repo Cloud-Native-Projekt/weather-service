@@ -19,13 +19,13 @@ from retry_requests import retry
 from sqlalchemy import delete, distinct, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from models import DailyWeatherHistory, DatabaseEngine
+from models import DailyWeatherForecast, DailyWeatherHistory, DatabaseEngine
 
 
 class OpenMeteoClient(ABC, openmeteo_requests.Client):
 
     SESSION = retry(
-        requests_cache.CachedSession(".cache", expire_after=-1),
+        requests_cache.CachedSession(".cache", expire_after=86399),
         retries=5,
         backoff_factor=60,
     )
@@ -70,6 +70,7 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
         """
         pass
 
+    @abstractmethod
     def get_data(self, url: str, params: Dict[str, Any]) -> List[WeatherApiResponse]:
         """_summary_
 
@@ -80,92 +81,7 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
         Returns:
             List[WeatherApiResponse]: List of responses from the OpenMeteo Weather API
         """
-        responses = []
-
-        locations: NDArray[np.float64] = params["locations"]
-
-        years = list(
-            range(
-                datetime.strptime(params["start_date"], "%Y-%m-%d").date().year,
-                datetime.strptime(params["end_date"], "%Y-%m-%d").date().year + 1,
-            )
-        )
-
-        num_requests = locations.shape[0] * len(years)
-        time_estimate = self.get_request_time_estimate(num_requests)
-
-        self.logger.info(
-            f"Processing {num_requests} requests costing an estimated {OpenMeteoClient.FRACTIONAL_API_COST * num_requests} API calls.\nThis will take ~ {str(timedelta(seconds=time_estimate))}"
-        )
-
-        minutely_usage = 0.0
-        hourly_usage = 0.0
-        daily_usage = 0.0
-
-        for location in locations:
-            for year in years:
-                start_date = date(year, 1, 1)
-                end_date = (
-                    date(year, 12, 31)
-                    if year < date.today().year
-                    else params["end_date"]
-                )
-                fractional_query_params = {
-                    "latitude": location[0],
-                    "longitude": location[1],
-                    "start_date": start_date,
-                    "end_date": end_date,
-                    "daily": params["daily"],
-                }
-
-                self.logger.info(
-                    f"Retrieving data for Lat.: {location[0]}° (N), Lon.: {location[1]}° (E) from {start_date} to {end_date}"
-                )
-
-                fractional_responses = self.weather_api(
-                    url, params=fractional_query_params
-                )
-
-                responses.append(*fractional_responses)
-
-                minutely_usage, hourly_usage, daily_usage = (
-                    minutely_usage + OpenMeteoClient.FRACTIONAL_API_COST,
-                    hourly_usage + OpenMeteoClient.FRACTIONAL_API_COST,
-                    daily_usage + OpenMeteoClient.FRACTIONAL_API_COST,
-                )
-
-                if (
-                    minutely_usage + OpenMeteoClient.FRACTIONAL_API_COST
-                    >= OpenMeteoClient.MINUTELY_RATE_LIMIT
-                ):
-                    self.logger.info(
-                        f"Minutely rate limit hit. Backing off for {str(timedelta(seconds=OpenMeteoClient.MINUTELY_BACKOFF))}."
-                    )
-                    sleep(OpenMeteoClient.MINUTELY_BACKOFF)
-                    minutely_usage = 0.0
-                if (
-                    hourly_usage + OpenMeteoClient.FRACTIONAL_API_COST
-                    >= OpenMeteoClient.HOURLY_RATE_LIMIT
-                ):
-                    self.logger.info(
-                        f"Hourly rate limit hit. Backing off for {str(timedelta(seconds=OpenMeteoClient.HOURLY_BACKOFF))}."
-                    )
-                    sleep(OpenMeteoClient.HOURLY_BACKOFF)
-                    minutely_usage = 0.0
-                    hourly_usage = 0.0
-                if (
-                    daily_usage + OpenMeteoClient.FRACTIONAL_API_COST
-                    >= OpenMeteoClient.DAILY_RATE_LIMIT
-                ):
-                    self.logger.info(
-                        f"Daily rate limit hit. Backing off for {str(timedelta(seconds=OpenMeteoClient.DAILY_BACKOFF))} seconds."
-                    )
-                    sleep(OpenMeteoClient.DAILY_BACKOFF)
-                    minutely_usage = 0.0
-                    hourly_usage = 0.0
-                    daily_usage = 0.0
-
-        return responses
+        pass
 
     def get_request_time_estimate(self, num_requests: int) -> float:  # TODO: fix
         if num_requests <= OpenMeteoClient.MINUTELY_RATE_LIMIT:
@@ -206,6 +122,40 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
             time_estimate = 0.0
 
         return time_estimate
+
+    def handle_ratelimit(
+        self, minutely_usage: float, hourly_usage: float, daily_usage: float
+    ):
+        if (
+            minutely_usage + OpenMeteoClient.FRACTIONAL_API_COST
+            >= OpenMeteoClient.MINUTELY_RATE_LIMIT
+        ):
+            self.logger.info(
+                f"Minutely rate limit hit. Backing off for {str(timedelta(seconds=OpenMeteoClient.MINUTELY_BACKOFF))}."
+            )
+            sleep(OpenMeteoClient.MINUTELY_BACKOFF)
+            minutely_usage = 0.0
+        if (
+            hourly_usage + OpenMeteoClient.FRACTIONAL_API_COST
+            >= OpenMeteoClient.HOURLY_RATE_LIMIT
+        ):
+            self.logger.info(
+                f"Hourly rate limit hit. Backing off for {str(timedelta(seconds=OpenMeteoClient.HOURLY_BACKOFF))}."
+            )
+            sleep(OpenMeteoClient.HOURLY_BACKOFF)
+            minutely_usage = 0.0
+            hourly_usage = 0.0
+        if (
+            daily_usage + OpenMeteoClient.FRACTIONAL_API_COST
+            >= OpenMeteoClient.DAILY_RATE_LIMIT
+        ):
+            self.logger.info(
+                f"Daily rate limit hit. Backing off for {str(timedelta(seconds=OpenMeteoClient.DAILY_BACKOFF))} seconds."
+            )
+            sleep(OpenMeteoClient.DAILY_BACKOFF)
+            minutely_usage = 0.0
+            hourly_usage = 0.0
+            daily_usage = 0.0
 
     def extract_variable(
         self, variable_index: int, variables: VariablesWithTime
@@ -372,6 +322,74 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
             )
             return False
 
+    def get_data(self, url: str, params: Dict[str, Any]) -> List[WeatherApiResponse]:
+        """_summary_
+
+        Args:
+            url (str): URL of the API endpoint
+            params (Dict[str, Any): Dictionary containing the query params of the API request
+
+        Returns:
+            List[WeatherApiResponse]: List of responses from the OpenMeteo Weather API
+        """
+        responses = []
+
+        locations: NDArray[np.float64] = params["locations"]
+
+        years = list(
+            range(
+                datetime.strptime(params["start_date"], "%Y-%m-%d").date().year,
+                datetime.strptime(params["end_date"], "%Y-%m-%d").date().year + 1,
+            )
+        )
+
+        num_requests = locations.shape[0] * len(years)
+        time_estimate = self.get_request_time_estimate(num_requests)
+
+        self.logger.info(
+            f"Processing {num_requests} requests costing an estimated {OpenMeteoClient.FRACTIONAL_API_COST * num_requests} API calls.\nThis will take ~ {str(timedelta(seconds=time_estimate))}"
+        )
+
+        minutely_usage = 0.0
+        hourly_usage = 0.0
+        daily_usage = 0.0
+
+        for location in locations:
+            for year in years:
+                start_date = date(year, 1, 1)
+                end_date = (
+                    date(year, 12, 31)
+                    if year < date.today().year
+                    else params["end_date"]
+                )
+                fractional_query_params = {
+                    "latitude": location[0],
+                    "longitude": location[1],
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "daily": params["daily"],
+                }
+
+                self.logger.info(
+                    f"Retrieving historic data for Lat.: {location[0]}° (N), Lon.: {location[1]}° (E) from {start_date} to {end_date}"
+                )
+
+                fractional_responses = self.weather_api(
+                    url, params=fractional_query_params
+                )
+
+                responses.append(*fractional_responses)
+
+                minutely_usage, hourly_usage, daily_usage = (
+                    minutely_usage + OpenMeteoClient.FRACTIONAL_API_COST,
+                    hourly_usage + OpenMeteoClient.FRACTIONAL_API_COST,
+                    daily_usage + OpenMeteoClient.FRACTIONAL_API_COST,
+                )
+
+                self.handle_ratelimit(minutely_usage, hourly_usage, daily_usage)
+
+        return responses
+
     def main(self) -> None:
         """_summary_"""
         if not self.check_data_exists():
@@ -398,6 +416,179 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
             records = data.to_dict(orient="records")
             orm_objects = [
                 DailyWeatherHistory(**{str(k): v for k, v in row.items()})
+                for row in records
+            ]
+
+            self.DB_SESSION.add_all(orm_objects)
+            self.DB_SESSION.commit()
+
+        self.DB_SESSION.close()
+
+        self.logger.info(f"{self.__class__.__name__} exited successfully.")
+
+
+class OpenMeteoForecastClient(OpenMeteoClient):
+
+    URL = "https://api.open-meteo.com/v1/forecast"
+
+    def __init__(self, session: Session = OpenMeteoClient.SESSION):  # type: ignore
+        """_summary_
+
+        Args:
+            session (Session, optional): _description_. Defaults to SESSION.
+        """
+        super().__init__(session)
+
+        self.logger.info(f"Setting up {self.__class__.__name__}")
+
+        self.DB_SESSION = sessionmaker(bind=DatabaseEngine().get_engine)()
+
+        with open(file=OpenMeteoClient.CONFIG_FILE, mode="r") as file:
+            config = json.load(fp=file)
+            file.close()
+
+        latitude_range = np.arange(
+            config["bounding_box"]["south_boundary"],
+            config["bounding_box"]["north_boundary"],
+            0.5,
+        )
+        longitude_range = np.arange(
+            config["bounding_box"]["west_boundary"],
+            config["bounding_box"]["east_boundary"],
+            0.5,
+        )
+        lat_grid, lon_grid = np.meshgrid(latitude_range, longitude_range, indexing="ij")
+        locations = np.column_stack([lat_grid.ravel(), lon_grid.ravel()])
+
+        self.QUERY_PARAMS = {
+            "locations": locations,
+            "past_days": config["forecast_past_days"],
+            "forecast_days": config["forecast_days"],
+            "daily": config["metrics_daily"],
+        }
+
+    def check_data_exists(self) -> bool:
+        """_summary_
+
+        Args:
+            table (str): _description_
+
+        Returns:
+            bool: _description_
+        """
+        self.logger.info("Checking if forecast data already exists as expected...")
+
+        expected_start_date = date.today() - timedelta(
+            days=self.QUERY_PARAMS["past_days"]
+        )
+        expected_end_date = date.today() + timedelta(
+            days=self.QUERY_PARAMS["forecast_days"]
+        )
+        start_date = self.DB_SESSION.scalar(select(func.min(DailyWeatherForecast.date)))
+        end_date = self.DB_SESSION.scalar(select(func.max(DailyWeatherForecast.date)))
+        date_range = self.DB_SESSION.scalars(
+            select(distinct(DailyWeatherForecast.date))
+        ).all()
+
+        if isinstance(start_date, date) and isinstance(end_date, date):
+            if (
+                start_date == expected_start_date
+                and end_date == expected_end_date
+                and len(date_range) == (end_date - start_date).days + 1
+            ):
+                self.logger.info(
+                    "Forecast data exists as expected. Skipping data retrieval..."
+                )
+                return True
+            else:
+                self.logger.info(
+                    f"Schema:\nStart Date : {start_date}, End Date: {end_date}, Date Range: {len(date_range)} days\nDoes not match expected schema:\nStart Date : {expected_start_date}, End Date: {expected_end_date}, Date Range: {(end_date - start_date).days + 1} days"
+                )
+                return False
+        else:
+            self.logger.info(
+                f"Data does not match expected type:\nStart Date: {start_date} Type: {type(start_date)}; End Date: {end_date} Type: {type(end_date)}"
+            )
+            return False
+
+    def get_data(self, url: str, params: Dict[str, Any]) -> List[WeatherApiResponse]:
+        """_summary_
+
+        Args:
+            url (str): URL of the API endpoint
+            params (Dict[str, Any): Dictionary containing the query params of the API request
+
+        Returns:
+            List[WeatherApiResponse]: List of responses from the OpenMeteo Weather API
+        """
+        responses = []
+
+        locations: NDArray[np.float64] = params["locations"]
+
+        num_requests = locations.shape[0]
+        time_estimate = self.get_request_time_estimate(num_requests)
+
+        self.logger.info(
+            f"Processing {num_requests} requests costing an estimated {OpenMeteoClient.FRACTIONAL_API_COST * num_requests} API calls.\nThis will take ~ {str(timedelta(seconds=time_estimate))}"
+        )
+
+        minutely_usage = 0.0
+        hourly_usage = 0.0
+        daily_usage = 0.0
+
+        for location in locations:
+            fractional_query_params = {
+                "latitude": location[0],
+                "longitude": location[1],
+                "past_days": self.QUERY_PARAMS["past_days"],
+                "forecast_days": self.QUERY_PARAMS["forecast_days"],
+                "daily": params["daily"],
+            }
+
+            self.logger.info(
+                f"Retrieving forecast data for Lat.: {location[0]}° (N), Lon.: {location[1]}° (E)"
+            )
+
+            fractional_responses = self.weather_api(url, params=fractional_query_params)
+
+            responses.append(*fractional_responses)
+
+            minutely_usage, hourly_usage, daily_usage = (
+                minutely_usage + OpenMeteoClient.FRACTIONAL_API_COST,
+                hourly_usage + OpenMeteoClient.FRACTIONAL_API_COST,
+                daily_usage + OpenMeteoClient.FRACTIONAL_API_COST,
+            )
+
+            self.handle_ratelimit(minutely_usage, hourly_usage, daily_usage)
+
+        return responses
+
+    def main(self) -> None:
+        """_summary_"""
+        if not self.check_data_exists():
+            self.logger.info("Cleaning table...")
+            self.DB_SESSION.execute(delete(DailyWeatherForecast))
+            data = pd.DataFrame()
+            for response in self.get_data(
+                url=OpenMeteoForecastClient.URL, params=self.QUERY_PARAMS
+            ):
+                processed_response = self.process_response(
+                    response=response, params=self.QUERY_PARAMS
+                )
+
+                processed_response["latitude"] = response.Latitude()
+                processed_response["longitude"] = response.Longitude()
+
+                data = pd.concat([data, processed_response], axis=0)
+
+            data["date"] = pd.to_datetime(
+                data["date"], format="%Y-%m-%d %H:%M:%S"
+            ).dt.strftime("%Y-%m-%d")
+
+            self.logger.info("Writing data to database...")
+            records = data.to_dict(orient="records")
+            orm_objects = [
+                DailyWeatherForecast(**{str(k): v for k, v in row.items()})
                 for row in records
             ]
 
