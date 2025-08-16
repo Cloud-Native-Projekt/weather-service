@@ -4,7 +4,7 @@ import os
 from abc import ABC, abstractmethod
 from datetime import date, datetime, timedelta
 from time import sleep
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 import openmeteo_requests
@@ -125,7 +125,7 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
 
     def handle_ratelimit(
         self, minutely_usage: float, hourly_usage: float, daily_usage: float
-    ):
+    ) -> Tuple[float, float, float]:
         if (
             minutely_usage + OpenMeteoClient.FRACTIONAL_API_COST
             >= OpenMeteoClient.MINUTELY_RATE_LIMIT
@@ -156,6 +156,8 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
             minutely_usage = 0.0
             hourly_usage = 0.0
             daily_usage = 0.0
+
+        return (minutely_usage, hourly_usage, daily_usage)
 
     def extract_variable(
         self, variable_index: int, variables: VariablesWithTime
@@ -386,7 +388,9 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
                     daily_usage + OpenMeteoClient.FRACTIONAL_API_COST,
                 )
 
-                self.handle_ratelimit(minutely_usage, hourly_usage, daily_usage)
+                minutely_usage, hourly_usage, daily_usage = self.handle_ratelimit(
+                    minutely_usage, hourly_usage, daily_usage
+                )
 
         return responses
 
