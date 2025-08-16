@@ -40,7 +40,6 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
     MINUTELY_BACKOFF = 61
     HOURLY_BACKOFF = 3601
     DAILY_BACKOFF = 86401
-    FRACTIONAL_API_COST = 31.3
 
     def __init__(self, session: Session = SESSION):  # type: ignore
         """_summary_
@@ -124,31 +123,26 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
         return time_estimate
 
     def handle_ratelimit(
-        self, minutely_usage: float, hourly_usage: float, daily_usage: float
+        self,
+        minutely_usage: float,
+        hourly_usage: float,
+        daily_usage: float,
+        fractional_api_cost: float,
     ) -> Tuple[float, float, float]:
-        if (
-            minutely_usage + OpenMeteoClient.FRACTIONAL_API_COST
-            >= OpenMeteoClient.MINUTELY_RATE_LIMIT
-        ):
+        if minutely_usage + fractional_api_cost >= OpenMeteoClient.MINUTELY_RATE_LIMIT:
             self.logger.info(
                 f"Minutely rate limit hit. Backing off for {str(timedelta(seconds=OpenMeteoClient.MINUTELY_BACKOFF))}."
             )
             sleep(OpenMeteoClient.MINUTELY_BACKOFF)
             minutely_usage = 0.0
-        if (
-            hourly_usage + OpenMeteoClient.FRACTIONAL_API_COST
-            >= OpenMeteoClient.HOURLY_RATE_LIMIT
-        ):
+        if hourly_usage + fractional_api_cost >= OpenMeteoClient.HOURLY_RATE_LIMIT:
             self.logger.info(
                 f"Hourly rate limit hit. Backing off for {str(timedelta(seconds=OpenMeteoClient.HOURLY_BACKOFF))}."
             )
             sleep(OpenMeteoClient.HOURLY_BACKOFF)
             minutely_usage = 0.0
             hourly_usage = 0.0
-        if (
-            daily_usage + OpenMeteoClient.FRACTIONAL_API_COST
-            >= OpenMeteoClient.DAILY_RATE_LIMIT
-        ):
+        if daily_usage + fractional_api_cost >= OpenMeteoClient.DAILY_RATE_LIMIT:
             self.logger.info(
                 f"Daily rate limit hit. Backing off for {str(timedelta(seconds=OpenMeteoClient.DAILY_BACKOFF))} seconds."
             )
@@ -243,6 +237,8 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
 class OpenMeteoArchiveClient(OpenMeteoClient):
 
     URL = "https://archive-api.open-meteo.com/v1/archive"
+
+    FRACTIONAL_API_COST = 31.3
 
     def __init__(self, session: Session = OpenMeteoClient.SESSION):  # type: ignore
         """_summary_
@@ -349,7 +345,7 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
         time_estimate = self.get_request_time_estimate(num_requests)
 
         self.logger.info(
-            f"Processing {num_requests} requests costing an estimated {OpenMeteoClient.FRACTIONAL_API_COST * num_requests} API calls.\nThis will take ~ {str(timedelta(seconds=time_estimate))}"
+            f"Processing {num_requests} requests costing an estimated {OpenMeteoArchiveClient.FRACTIONAL_API_COST * num_requests} API calls.\nThis will take ~ {str(timedelta(seconds=time_estimate))}"
         )
 
         minutely_usage = 0.0
@@ -383,13 +379,16 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
                 responses.append(*fractional_responses)
 
                 minutely_usage, hourly_usage, daily_usage = (
-                    minutely_usage + OpenMeteoClient.FRACTIONAL_API_COST,
-                    hourly_usage + OpenMeteoClient.FRACTIONAL_API_COST,
-                    daily_usage + OpenMeteoClient.FRACTIONAL_API_COST,
+                    minutely_usage + OpenMeteoArchiveClient.FRACTIONAL_API_COST,
+                    hourly_usage + OpenMeteoArchiveClient.FRACTIONAL_API_COST,
+                    daily_usage + OpenMeteoArchiveClient.FRACTIONAL_API_COST,
                 )
 
                 minutely_usage, hourly_usage, daily_usage = self.handle_ratelimit(
-                    minutely_usage, hourly_usage, daily_usage
+                    minutely_usage,
+                    hourly_usage,
+                    daily_usage,
+                    OpenMeteoArchiveClient.FRACTIONAL_API_COST,
                 )
 
         return responses
@@ -434,6 +433,8 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
 class OpenMeteoForecastClient(OpenMeteoClient):
 
     URL = "https://api.open-meteo.com/v1/forecast"
+
+    FRACTIONAL_API_COST = 1.2
 
     def __init__(self, session: Session = OpenMeteoClient.SESSION):  # type: ignore
         """_summary_
@@ -533,7 +534,7 @@ class OpenMeteoForecastClient(OpenMeteoClient):
         time_estimate = self.get_request_time_estimate(num_requests)
 
         self.logger.info(
-            f"Processing {num_requests} requests costing an estimated {OpenMeteoClient.FRACTIONAL_API_COST * num_requests} API calls.\nThis will take ~ {str(timedelta(seconds=time_estimate))}"
+            f"Processing {num_requests} requests costing an estimated {OpenMeteoForecastClient.FRACTIONAL_API_COST * num_requests} API calls.\nThis will take ~ {str(timedelta(seconds=time_estimate))}"
         )
 
         minutely_usage = 0.0
@@ -558,12 +559,17 @@ class OpenMeteoForecastClient(OpenMeteoClient):
             responses.append(*fractional_responses)
 
             minutely_usage, hourly_usage, daily_usage = (
-                minutely_usage + OpenMeteoClient.FRACTIONAL_API_COST,
-                hourly_usage + OpenMeteoClient.FRACTIONAL_API_COST,
-                daily_usage + OpenMeteoClient.FRACTIONAL_API_COST,
+                minutely_usage + OpenMeteoForecastClient.FRACTIONAL_API_COST,
+                hourly_usage + OpenMeteoForecastClient.FRACTIONAL_API_COST,
+                daily_usage + OpenMeteoForecastClient.FRACTIONAL_API_COST,
             )
 
-            self.handle_ratelimit(minutely_usage, hourly_usage, daily_usage)
+            self.handle_ratelimit(
+                minutely_usage,
+                hourly_usage,
+                daily_usage,
+                OpenMeteoForecastClient.FRACTIONAL_API_COST,
+            )
 
         return responses
 
