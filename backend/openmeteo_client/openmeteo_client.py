@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from abc import ABC, abstractmethod
 from datetime import date, datetime, timedelta
@@ -49,6 +50,14 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
         """
         super().__init__(session)  # type: ignore
 
+        logging.basicConfig(
+            level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
+        )
+        self.logger = logging.getLogger(name=self.__class__.__name__)
+        handler = logging.StreamHandler()
+        handler.setLevel(logging.INFO)
+        self.logger.addHandler(handler)
+
     @abstractmethod
     def check_data_exists(self) -> bool:
         """_summary_
@@ -83,6 +92,82 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
         )
 
         num_requests = locations.shape[0] * len(years)
+        time_estimate = self.get_request_time_estimate(num_requests)
+
+        self.logger.info(
+            f"Processing {num_requests} requests costing an estimated {OpenMeteoClient.FRACTIONAL_API_COST * num_requests} API calls.\nThis will take ~ {str(timedelta(seconds=time_estimate))}"
+        )
+
+        minutely_usage = 0.0
+        hourly_usage = 0.0
+        daily_usage = 0.0
+
+        for location in locations:
+            for year in years:
+                start_date = date(year, 1, 1)
+                end_date = (
+                    date(year, 12, 31)
+                    if year < date.today().year
+                    else params["end_date"]
+                )
+                fractional_query_params = {
+                    "latitude": location[0],
+                    "longitude": location[1],
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "daily": params["daily"],
+                }
+
+                self.logger.info(
+                    f"Retrieving data for Lat.: {location[0]}° (N), Lon.: {location[1]}° (E) from {start_date} to {end_date}"
+                )
+
+                fractional_responses = self.weather_api(
+                    url, params=fractional_query_params
+                )
+
+                responses.append(*fractional_responses)
+
+                minutely_usage, hourly_usage, daily_usage = (
+                    minutely_usage + OpenMeteoClient.FRACTIONAL_API_COST,
+                    hourly_usage + OpenMeteoClient.FRACTIONAL_API_COST,
+                    daily_usage + OpenMeteoClient.FRACTIONAL_API_COST,
+                )
+
+                if (
+                    minutely_usage + OpenMeteoClient.FRACTIONAL_API_COST
+                    >= OpenMeteoClient.MINUTELY_RATE_LIMIT
+                ):
+                    self.logger.info(
+                        f"Minutely rate limit hit. Backing off for {str(timedelta(seconds=OpenMeteoClient.MINUTELY_BACKOFF))}."
+                    )
+                    sleep(OpenMeteoClient.MINUTELY_BACKOFF)
+                    minutely_usage = 0.0
+                if (
+                    hourly_usage + OpenMeteoClient.FRACTIONAL_API_COST
+                    >= OpenMeteoClient.HOURLY_RATE_LIMIT
+                ):
+                    self.logger.info(
+                        f"Hourly rate limit hit. Backing off for {str(timedelta(seconds=OpenMeteoClient.HOURLY_BACKOFF))}."
+                    )
+                    sleep(OpenMeteoClient.HOURLY_BACKOFF)
+                    minutely_usage = 0.0
+                    hourly_usage = 0.0
+                if (
+                    daily_usage + OpenMeteoClient.FRACTIONAL_API_COST
+                    >= OpenMeteoClient.DAILY_RATE_LIMIT
+                ):
+                    self.logger.info(
+                        f"Daily rate limit hit. Backing off for {str(timedelta(seconds=OpenMeteoClient.DAILY_BACKOFF))} seconds."
+                    )
+                    sleep(OpenMeteoClient.DAILY_BACKOFF)
+                    minutely_usage = 0.0
+                    hourly_usage = 0.0
+                    daily_usage = 0.0
+
+        return responses
+
+    def get_request_time_estimate(self, num_requests: int) -> float:  # TODO: fix
         if num_requests <= OpenMeteoClient.MINUTELY_RATE_LIMIT:
             time_estimate = 0.0
         elif (
@@ -120,65 +205,7 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
         else:
             time_estimate = 0.0
 
-        print(
-            f"Processing {num_requests} requests costing an estimated {OpenMeteoClient.FRACTIONAL_API_COST * num_requests} API calls.\nThis will take ~ {str(timedelta(seconds=time_estimate))}"
-        )
-
-        minutely_usage = 0.0
-        hourly_usage = 0.0
-        daily_usage = 0.0
-
-        for location in locations:
-            for year in years:
-                start_date = date(year, 1, 1)
-                end_date = (
-                    date(year, 12, 31)
-                    if year < date.today().year
-                    else params["end_date"]
-                )
-                fractional_query_params = {
-                    "latitude": location[0],
-                    "longitude": location[1],
-                    "start_date": start_date,
-                    "end_date": end_date,
-                    "daily": params["daily"],
-                }
-
-                fractional_responses = self.weather_api(
-                    url, params=fractional_query_params
-                )
-
-                responses.append(*fractional_responses)
-
-                minutely_usage, hourly_usage, daily_usage = (
-                    minutely_usage + OpenMeteoClient.FRACTIONAL_API_COST,
-                    hourly_usage + OpenMeteoClient.FRACTIONAL_API_COST,
-                    daily_usage + OpenMeteoClient.FRACTIONAL_API_COST,
-                )
-
-                if (
-                    minutely_usage + OpenMeteoClient.FRACTIONAL_API_COST
-                    >= OpenMeteoClient.MINUTELY_RATE_LIMIT
-                ):
-                    sleep(OpenMeteoClient.MINUTELY_BACKOFF)
-                    minutely_usage = 0.0
-                if (
-                    hourly_usage + OpenMeteoClient.FRACTIONAL_API_COST
-                    >= OpenMeteoClient.HOURLY_RATE_LIMIT
-                ):
-                    sleep(OpenMeteoClient.HOURLY_BACKOFF)
-                    minutely_usage = 0.0
-                    hourly_usage = 0.0
-                if (
-                    daily_usage + OpenMeteoClient.FRACTIONAL_API_COST
-                    >= OpenMeteoClient.DAILY_RATE_LIMIT
-                ):
-                    sleep(OpenMeteoClient.DAILY_BACKOFF)
-                    minutely_usage = 0.0
-                    hourly_usage = 0.0
-                    daily_usage = 0.0
-
-        return responses
+        return time_estimate
 
     def extract_variable(
         self, variable_index: int, variables: VariablesWithTime
@@ -273,6 +300,8 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
         """
         super().__init__(session)
 
+        self.logger.info(f"Setting up {self.__class__.__name__}")
+
         self.DB_SESSION = sessionmaker(bind=DatabaseEngine().get_engine)()
 
         with open(file=OpenMeteoClient.CONFIG_FILE, mode="r") as file:
@@ -308,6 +337,8 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
         Returns:
             bool: _description_
         """
+        self.logger.info("Checking if historic data already exists as expected...")
+
         expected_start_date = datetime.strptime(
             self.QUERY_PARAMS["start_date"], "%Y-%m-%d"
         ).date()
@@ -326,14 +357,17 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
                 and end_date == expected_end_date
                 and len(date_range) == (end_date - start_date).days + 1
             ):
+                self.logger.info(
+                    "Historic data exists as expected. Skipping data retrieval..."
+                )
                 return True
             else:
-                print(
+                self.logger.info(
                     f"Schema:\nStart Date : {start_date}, End Date: {end_date}, Date Range: {len(date_range)} days\nDoes not match expected schema:\nStart Date : {expected_start_date}, End Date: {expected_end_date}, Date Range: {(end_date - start_date).days + 1} days"
                 )
                 return False
         else:
-            print(
+            self.logger.info(
                 f"Data does not match expected type:\nStart Date: {start_date} Type: {type(start_date)}; End Date: {end_date} Type: {type(end_date)}"
             )
             return False
@@ -341,6 +375,7 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
     def main(self) -> None:
         """_summary_"""
         if not self.check_data_exists():
+            self.logger.info("Cleaning table...")
             self.DB_SESSION.execute(delete(DailyWeatherHistory))
             data = pd.DataFrame()
             for response in self.get_data(
@@ -359,6 +394,7 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
                 data["date"], format="%Y-%m-%d %H:%M:%S"
             ).dt.strftime("%Y-%m-%d")
 
+            self.logger.info("Writing data to database...")
             records = data.to_dict(orient="records")
             orm_objects = [
                 DailyWeatherHistory(**{str(k): v for k, v in row.items()})
@@ -367,6 +403,7 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
 
             self.DB_SESSION.add_all(orm_objects)
             self.DB_SESSION.commit()
-            self.DB_SESSION.close()
-        else:
-            print("Data exists as expected.")
+
+        self.DB_SESSION.close()
+
+        self.logger.info(f"{self.__class__.__name__} exited successfully.")
