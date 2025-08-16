@@ -20,8 +20,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy models
 COPY models/ ./models/
 
+# Copy packages
+COPY backend/openmeteo_client/ ./openmeteo_client/
+
 # Copy application code
-COPY backend/ .
+COPY backend/init_service .
 
 # Change ownership to non-root user
 RUN chown -R appuser:appuser /app
