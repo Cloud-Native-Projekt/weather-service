@@ -51,7 +51,7 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
         super().__init__(session)  # type: ignore
 
         logging.basicConfig(
-            level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
+            level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
         )
         self.logger = logging.getLogger(name=self.__class__.__name__)
         handler = logging.StreamHandler()
