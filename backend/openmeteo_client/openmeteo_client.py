@@ -53,9 +53,6 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
             level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
         )
         self.logger = logging.getLogger(name=self.__class__.__name__)
-        handler = logging.StreamHandler()
-        handler.setLevel(logging.INFO)
-        self.logger.addHandler(handler)
 
     @abstractmethod
     def check_data_exists(self) -> bool:
