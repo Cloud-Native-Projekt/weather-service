@@ -39,7 +39,7 @@ class DailyWeatherHistory(DailyWeatherBase):
 
 
 class DailyWeatherForecast(DailyWeatherBase):
-    __tablename__ = "forecast"
+    __tablename__ = "current"
 
 
 class DatabaseEngine:
