@@ -50,7 +50,8 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
         super().__init__(session)  # type: ignore
 
         logging.basicConfig(
-            level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+            level=logging.INFO,
+            format="%(asctime)s - %(levelname)s - %(message)s",
         )
         self.logger = logging.getLogger(name=self.__class__.__name__)
 
@@ -483,8 +484,10 @@ class OpenMeteoForecastClient(OpenMeteoClient):
         expected_start_date = date.today() - timedelta(
             days=self.QUERY_PARAMS["past_days"]
         )
-        expected_end_date = date.today() + timedelta(
-            days=self.QUERY_PARAMS["forecast_days"]
+        expected_end_date = (
+            date.today()
+            + timedelta(days=self.QUERY_PARAMS["forecast_days"])
+            - timedelta(days=1)
         )
         start_date = self.DB_SESSION.scalar(select(func.min(DailyWeatherForecast.date)))
         end_date = self.DB_SESSION.scalar(select(func.max(DailyWeatherForecast.date)))
