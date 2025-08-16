@@ -1,7 +1,7 @@
 import os
 from abc import ABC, ABCMeta
 
-from sqlalchemy import Column, Date, Float, Integer, create_engine
+from sqlalchemy import Column, Date, Float, Integer, String, create_engine
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.orm import declarative_base
 
@@ -13,13 +13,12 @@ class CombinedMeta(DeclarativeMeta, ABCMeta):
 Base = declarative_base(metaclass=CombinedMeta)
 
 
-class DailyWeatherBase(Base, ABC):
+class WeatherBase(Base, ABC):
     __abstract__ = True
 
     idx = Column(Integer, primary_key=True, autoincrement=True)
     latitude = Column(Float, index=True, nullable=False)
     longitude = Column(Float, index=True, nullable=False)
-    date = Column(Date, index=True, nullable=False)
     temperature_2m_mean = Column(Float)
     temperature_2m_max = Column(Float)
     temperature_2m_min = Column(Float)
@@ -34,12 +33,31 @@ class DailyWeatherBase(Base, ABC):
     precipitation_hours = Column(Float)
 
 
-class DailyWeatherHistory(DailyWeatherBase):
+class DailyWeatherHistory(WeatherBase):
     __tablename__ = "daily_history"
 
+    date = Column(Date, index=True, nullable=False)
 
-class DailyWeatherForecast(DailyWeatherBase):
+
+class DailyWeatherForecast(WeatherBase):
     __tablename__ = "daily_forecast"
+
+    date = Column(Date, index=True, nullable=False)
+
+
+class WeeklyWeatherHistory(WeatherBase):
+    __tablename__ = "weekly_history"
+
+    year = Column(Integer, index=True, nullable=False)
+    week = Column(Integer, index=True, nullable=False)
+
+
+class WeeklyWeatherForecast(WeatherBase):
+    __tablename__ = "weekly_forecast"
+
+    year = Column(Integer, index=True, nullable=False)
+    week = Column(Integer, index=True, nullable=False)
+    source = Column(String(length=32), nullable=False)
 
 
 class DatabaseEngine:
