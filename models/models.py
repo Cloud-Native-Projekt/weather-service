@@ -35,11 +35,11 @@ class DailyWeatherBase(Base, ABC):
 
 
 class DailyWeatherHistory(DailyWeatherBase):
-    __tablename__ = "history"
+    __tablename__ = "daily_history"
 
 
 class DailyWeatherForecast(DailyWeatherBase):
-    __tablename__ = "current"
+    __tablename__ = "daily_forecast"
 
 
 class DatabaseEngine:
