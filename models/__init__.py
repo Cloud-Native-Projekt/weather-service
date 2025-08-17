@@ -1,1 +1,8 @@
-from .models import Base, DailyWeatherForecast, DailyWeatherHistory, DatabaseEngine
+from .models import (
+    Base,
+    DailyWeatherForecast,
+    DailyWeatherHistory,
+    DatabaseEngine,
+    WeeklyWeatherForecast,
+    WeeklyWeatherHistory,
+)
