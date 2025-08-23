@@ -1,7 +1,15 @@
 import os
 from abc import ABC, ABCMeta
 
-from sqlalchemy import Column, Date, Float, Integer, String, create_engine
+from sqlalchemy import (
+    CheckConstraint,
+    Column,
+    Date,
+    Float,
+    Integer,
+    String,
+    create_engine,
+)
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.orm import declarative_base
 
@@ -58,6 +66,12 @@ class WeeklyWeatherForecast(WeatherBase):
     year = Column(Integer, index=True, nullable=False)
     week = Column(Integer, index=True, nullable=False)
     source = Column(String(length=32), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "source IN ('Open Meteo', 'Placeholder')", name="check_source"
+        ),  # TODO: replace placeholder
+    )
 
 
 class DatabaseEngine:
