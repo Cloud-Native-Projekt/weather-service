@@ -1,19 +1,18 @@
 services:
-  mariadb:
-    image: mariadb:lts-ubi
-    container_name: mariadb
+  database:
+    image: postgres:16-alpine
+    container_name: postgres
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: my-secret-pw
-      MYSQL_DATABASE: weatherdb
-      MYSQL_USER: myuser
-      MYSQL_PASSWORD: mypassword
+      POSTGRES_DB: weatherdb
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: pw
     volumes:
-      - mariadb_data:/var/lib/mysql
+      - postgres_data:/var/lib/postgresql/data
     ports:
-      - "3306:3306"
+      - "5432:5432"
     healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      test: ["CMD-SHELL", "pg_isready -U myuser -d weatherdb"]
       start_period: 10s
       interval: 10s
       timeout: 5s
@@ -26,13 +25,13 @@ services:
     container_name: init_service
     restart: no
     environment:
-      MYSQL_HOST: mariadb
-      MYSQL_PORT: 3306
-      MYSQL_DATABASE: weatherdb
-      MYSQL_USER: myuser
-      MYSQL_PASSWORD: mypassword
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: weatherdb
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: pw
     depends_on:
-      mariadb:
+      postgres:
         condition: service_healthy
         restart: true
 
@@ -44,13 +43,13 @@ services:
 #   container_name: openmeteo_client
 #   restart: on-failure
 #   environment:
-#     MYSQL_HOST: mariadb
-#     MYSQL_PORT: 3306
-#     MYSQL_DATABASE: weatherdb
-#     MYSQL_USER: myuser
-#     MYSQL_PASSWORD: mypassword
+#     POSTGRES_HOST: postgres
+#     POSTGRES_PORT: 5432
+#     POSTGRES_DB: weatherdb
+#     POSTGRES_USER: myuser
+#     POSTGRES_PASSWORD: pw
 #   depends_on:
-#     mariadb:
+#     postgres:
 #       condition: service_healthy
 #     db_init:
 #       condition: service_completed_successfully
@@ -62,17 +61,17 @@ services:
 #   container_name: api
 #   restart: on-failure
 #   environment:
-#     MYSQL_HOST: mariadb
-#     MYSQL_PORT: 3306
-#     MYSQL_DATABASE: weatherdb
-#     MYSQL_USER: myuser
-#     MYSQL_PASSWORD: mypassword
+#     POSTGRES_HOST: postgres
+#     POSTGRES_PORT: 5432
+#     POSTGRES_DB: weatherdb
+#     POSTGRES_USER: myuser
+#     POSTGRES_PASSWORD: pw
 #   ports:
 #     - "8001:8001"
 #   depends_on:
-#     mariadb:
+#     postgres:
 #       condition: service_healthy
 
 
 volumes:
-  mariadb_data:
+  data:

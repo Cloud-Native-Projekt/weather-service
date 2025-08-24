@@ -75,13 +75,13 @@ class WeeklyWeatherForecast(WeatherBase):
 
 
 class DatabaseEngine:
-    __DIALECT = "mysql"
-    __DRIVER = "pymysql"
-    __USER = os.getenv("MYSQL_USER")
-    __PASSWORD = os.getenv("MYSQL_PASSWORD")
-    __HOST = os.getenv("MYSQL_HOST")
-    __PORT = os.getenv("MYSQL_PORT")
-    __DATABASE = os.getenv("MYSQL_DATABASE")
+    __DIALECT = "postgresql"
+    __DRIVER = "psycopg2"
+    __USER = os.getenv("POSTGRES_USER")
+    __PASSWORD = os.getenv("POSTGRES_PASSWORD")
+    __HOST = os.getenv("POSTGRES_HOST")
+    __PORT = os.getenv("POSTGRES_PORT")
+    __DATABASE = os.getenv("POSTGRES_DB")
 
     def __init__(self) -> None:
         self.__engine = create_engine(
