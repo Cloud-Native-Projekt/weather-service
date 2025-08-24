@@ -1,11 +1,11 @@
 {
     "bounding_box": {
-        "north_boundary": 37.0,
+        "north_boundary": 71.0,
         "south_boundary": 36.0,
         "west_boundary": 9.0,
-        "east_boundary": 10.0
+        "east_boundary": 68.0
     },
-    "history_start_date": "2020-01-01",
+    "history_start_date": "2001-01-01",
     "forecast_past_days": 1,
     "forecast_days": 16,
     "metrics_daily": [

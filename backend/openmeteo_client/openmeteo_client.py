@@ -30,10 +30,6 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
         backoff_factor=2,
     )
 
-    CONFIG_FILE = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "config.json"
-    )
-
     MINUTELY_RATE_LIMIT = 600
     HOURLY_RATE_LIMIT = 5000
     DAILY_RATE_LIMIT = 10000
@@ -48,6 +44,17 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
             session (Session, optional): _description_. Defaults to SESSION.
         """
         super().__init__(session)  # type: ignore
+
+        CONFIG_FILE = os.getenv("CONFIG_FILE")
+
+        if isinstance(CONFIG_FILE, str):
+            self.CONFIG_FILE_PATH = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), CONFIG_FILE
+            )
+        else:
+            raise TypeError(
+                f"Provided argument for $CONFIG_FILE {CONFIG_FILE} does not match expected type. Expected: str, got {type(CONFIG_FILE)} instead."
+            )
 
         logging.basicConfig(
             level=logging.INFO,
@@ -250,7 +257,7 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
 
         self.DB_SESSION = sessionmaker(bind=DatabaseEngine().get_engine)()
 
-        with open(file=OpenMeteoClient.CONFIG_FILE, mode="r") as file:
+        with open(file=self.CONFIG_FILE_PATH, mode="r") as file:
             config = json.load(fp=file)
             file.close()
 
@@ -446,7 +453,7 @@ class OpenMeteoForecastClient(OpenMeteoClient):
 
         self.DB_SESSION = sessionmaker(bind=DatabaseEngine().get_engine)()
 
-        with open(file=OpenMeteoClient.CONFIG_FILE, mode="r") as file:
+        with open(file=self.CONFIG_FILE_PATH, mode="r") as file:
             config = json.load(fp=file)
             file.close()
 

@@ -207,3 +207,6 @@ __marimo__/
 
 # API Client Session Cache
 .cache.sqlite
+
+# Dev Config File
+dev_config.json
