@@ -1,36 +1,32 @@
-FROM python:3.13.6-bookworm
+FROM python:3.13.6-bookworm AS builder
 
-# Install system packages
-RUN apt-get update && apt-get install -y \
+WORKDIR /app
+COPY backend/requirements.txt .
+RUN pip install --user --no-cache-dir -r requirements.txt
+
+FROM python:3.13.6-slim-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    git \
  && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+RUN groupadd -r appuser --gid=1000 && useradd -r -g appuser --uid=1000 appuser
 
 WORKDIR /app/
 
-# Copy requirements
-COPY backend/requirements.txt .
+# Copy installed packages from builder
+COPY --from=builder /root/.local /home/appuser/.local
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy models
+# Copy application files
 COPY models/ ./models/
-
-# Copy packages
 COPY backend/openmeteo_client/ ./openmeteo_client/
-
-# Copy application code
 COPY backend/init_service .
 
-# Change ownership to non-root user
 RUN chown -R appuser:appuser /app
 
-# Switch to non-root user
 USER appuser
 
-# Entry point
-CMD ["python", "db_init.py"]
+# Make sure scripts are in PATH
+ENV PATH=/home/appuser/.local/bin:$PATH
+
+CMD ["sh", "-c", "python init.py && python post_init.py"]
