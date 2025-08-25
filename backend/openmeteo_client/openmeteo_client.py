@@ -304,7 +304,7 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
     HOURLY_BACKOFF = 3601
     DAILY_BACKOFF = 86401
 
-    def __init__(self, create_from_file: bool):  # type: ignore
+    def __init__(self, create_from_file: bool):
         """_summary_
 
         Args:
