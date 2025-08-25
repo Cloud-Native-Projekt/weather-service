@@ -1,14 +1,11 @@
 import logging
 
-import numpy as np
 import pandas as pd
-from sqlalchemy import select
-from sqlalchemy.orm import sessionmaker
 
 from models import (
     DailyWeatherForecast,
     DailyWeatherHistory,
-    DatabaseEngine,
+    WeatherDatabase,
     WeeklyWeatherForecast,
     WeeklyWeatherHistory,
 )
@@ -22,15 +19,15 @@ if __name__ == "__main__":
 
     logger.info("Beginning Post Init Script...")
 
-    DB_SESSION = sessionmaker(bind=DatabaseEngine().get_engine)()
+    database = WeatherDatabase()
 
     # Get daily data
     logger.info("Retrieving daily data from database...")
     daily_history = pd.DataFrame(
-        [row.__dict__ for row in DB_SESSION.scalars(select(DailyWeatherHistory)).all()]
+        [row.__dict__ for row in database.get_table(DailyWeatherHistory)]
     )
     daily_forecast = pd.DataFrame(
-        [row.__dict__ for row in DB_SESSION.scalars(select(DailyWeatherForecast)).all()]
+        [row.__dict__ for row in database.get_table(DailyWeatherForecast)]
     )
 
     # Convert date column to pandas datetime
@@ -135,22 +132,16 @@ if __name__ == "__main__":
 
     # Write data to db
     logger.info("Writing data to database...")
-    weekly_history_records = weekly_history.to_dict(orient="records")
-    weekly_history_records_orm_objects = [
-        WeeklyWeatherHistory(**{str(k): v for k, v in row.items()})
-        for row in weekly_history_records
-    ]
-    weekly_forecast_records = weekly_forecast.to_dict(orient="records")
-    weekly_forecast_records_orm_objects = [
-        WeeklyWeatherForecast(**{str(k): v for k, v in row.items()})
-        for row in weekly_forecast_records
-    ]
+    weekly_history_orm_objects = database.create_orm_objects(
+        data=weekly_history, table=WeeklyWeatherHistory
+    )
+    weekly_forecast_orm_objects = database.create_orm_objects(
+        data=weekly_forecast, table=WeeklyWeatherForecast
+    )
 
-    DB_SESSION.add_all(weekly_history_records_orm_objects)
-    DB_SESSION.add_all(weekly_forecast_records_orm_objects)
+    database.write_data(weekly_history_orm_objects)
+    database.write_data(weekly_forecast_orm_objects)
 
-    DB_SESSION.commit()
-
-    DB_SESSION.close()
+    database.close()
 
     logger.info("Post init script excited successfully!")

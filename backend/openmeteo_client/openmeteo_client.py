@@ -16,10 +16,10 @@ from openmeteo_sdk.VariablesWithTime import VariablesWithTime
 from openmeteo_sdk.VariableWithValues import VariableWithValues
 from openmeteo_sdk.WeatherApiResponse import WeatherApiResponse
 from retry_requests import retry
-from sqlalchemy import delete, distinct, func, select
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import delete
+from sqlalchemy.orm import Session
 
-from models import DailyWeatherForecast, DailyWeatherHistory, DatabaseEngine
+from models import DailyWeatherForecast, DailyWeatherHistory, WeatherDatabase
 
 
 class OpenMeteoClient(ABC, openmeteo_requests.Client):
@@ -63,18 +63,6 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
         self.logger = logging.getLogger(name=self.__class__.__name__)
 
     @abstractmethod
-    def check_data_exists(self) -> bool:
-        """_summary_
-
-        Args:
-            table (str): _description_
-
-        Returns:
-            bool: _description_
-        """
-        pass
-
-    @abstractmethod
     def get_data(self, url: str, params: Dict[str, Any]) -> List[WeatherApiResponse]:
         """_summary_
 
@@ -87,7 +75,7 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
         """
         pass
 
-    def get_request_time_estimate(self, num_requests: int) -> float:  # TODO: fix
+    def get_request_time_estimate(self, num_requests: int) -> float:
         if num_requests <= OpenMeteoClient.MINUTELY_RATE_LIMIT:
             time_estimate = 0.0
         elif (
@@ -255,7 +243,7 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
 
         self.logger.info(f"Setting up {self.__class__.__name__}")
 
-        self.DB_SESSION = sessionmaker(bind=DatabaseEngine().get_engine)()
+        self.database = WeatherDatabase()
 
         with open(file=self.CONFIG_FILE_PATH, mode="r") as file:
             config = json.load(fp=file)
@@ -280,50 +268,6 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
             "end_date": (datetime.today() - timedelta(days=2)).strftime("%Y-%m-%d"),
             "daily": config["metrics_daily"],
         }
-
-    def check_data_exists(self) -> bool:
-        """_summary_
-
-        Args:
-            table (str): _description_
-
-        Returns:
-            bool: _description_
-        """
-        self.logger.info("Checking if historic data already exists as expected...")
-
-        expected_start_date = datetime.strptime(
-            self.QUERY_PARAMS["start_date"], "%Y-%m-%d"
-        ).date()
-        expected_end_date = datetime.strptime(
-            self.QUERY_PARAMS["end_date"], "%Y-%m-%d"
-        ).date()
-        start_date = self.DB_SESSION.scalar(select(func.min(DailyWeatherHistory.date)))
-        end_date = self.DB_SESSION.scalar(select(func.max(DailyWeatherHistory.date)))
-        date_range = self.DB_SESSION.scalars(
-            select(distinct(DailyWeatherHistory.date))
-        ).all()
-
-        if isinstance(start_date, date) and isinstance(end_date, date):
-            if (
-                start_date == expected_start_date
-                and end_date == expected_end_date
-                and len(date_range) == (end_date - start_date).days + 1
-            ):
-                self.logger.info(
-                    "Historic data exists as expected. Skipping data retrieval..."
-                )
-                return True
-            else:
-                self.logger.info(
-                    f"Schema:\nStart Date : {start_date}, End Date: {end_date}, Date Range: {len(date_range)} days\nDoes not match expected schema:\nStart Date : {expected_start_date}, End Date: {expected_end_date}, Date Range: {(end_date - start_date).days + 1} days"
-                )
-                return False
-        else:
-            self.logger.info(
-                f"Data does not match expected type:\nStart Date: {start_date} Type: {type(start_date)}; End Date: {end_date} Type: {type(end_date)}"
-            )
-            return False
 
     def get_data(self, url: str, params: Dict[str, Any]) -> List[WeatherApiResponse]:
         """_summary_
@@ -400,9 +344,17 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
 
     def main(self) -> None:
         """_summary_"""
-        if not self.check_data_exists():
+        if not self.database.health_check(
+            start_date=datetime.strptime(
+                self.QUERY_PARAMS["start_date"], "%Y-%m-%d"
+            ).date(),
+            end_date=datetime.strptime(
+                self.QUERY_PARAMS["end_date"], "%Y-%m-%d"
+            ).date(),
+            table=DailyWeatherHistory,
+        ):
             self.logger.info("Cleaning table...")
-            self.DB_SESSION.execute(delete(DailyWeatherHistory))
+            self.database.truncate_table(DailyWeatherHistory)
             data = pd.DataFrame()
             for response in self.get_data(
                 url=OpenMeteoArchiveClient.URL, params=self.QUERY_PARAMS
@@ -421,16 +373,18 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
             ).dt.strftime("%Y-%m-%d")
 
             self.logger.info("Writing data to database...")
-            records = data.to_dict(orient="records")
-            orm_objects = [
-                DailyWeatherHistory(**{str(k): v for k, v in row.items()})
-                for row in records
-            ]
 
-            self.DB_SESSION.add_all(orm_objects)
-            self.DB_SESSION.commit()
+            orm_objects = self.database.create_orm_objects(
+                data=data, table=DailyWeatherHistory
+            )
 
-        self.DB_SESSION.close()
+            self.database.write_data(orm_objects)
+        else:
+            self.logger.info(
+                "Historic data exists as expected. Skipping data retrieval..."
+            )
+
+        self.database.close()
 
         self.logger.info(f"{self.__class__.__name__} exited successfully.")
 
@@ -451,7 +405,7 @@ class OpenMeteoForecastClient(OpenMeteoClient):
 
         self.logger.info(f"Setting up {self.__class__.__name__}")
 
-        self.DB_SESSION = sessionmaker(bind=DatabaseEngine().get_engine)()
+        self.database = WeatherDatabase()
 
         with open(file=self.CONFIG_FILE_PATH, mode="r") as file:
             config = json.load(fp=file)
@@ -476,52 +430,6 @@ class OpenMeteoForecastClient(OpenMeteoClient):
             "forecast_days": config["forecast_days"],
             "daily": config["metrics_daily"],
         }
-
-    def check_data_exists(self) -> bool:
-        """_summary_
-
-        Args:
-            table (str): _description_
-
-        Returns:
-            bool: _description_
-        """
-        self.logger.info("Checking if forecast data already exists as expected...")
-
-        expected_start_date = date.today() - timedelta(
-            days=self.QUERY_PARAMS["past_days"]
-        )
-        expected_end_date = (
-            date.today()
-            + timedelta(days=self.QUERY_PARAMS["forecast_days"])
-            - timedelta(days=1)
-        )
-        start_date = self.DB_SESSION.scalar(select(func.min(DailyWeatherForecast.date)))
-        end_date = self.DB_SESSION.scalar(select(func.max(DailyWeatherForecast.date)))
-        date_range = self.DB_SESSION.scalars(
-            select(distinct(DailyWeatherForecast.date))
-        ).all()
-
-        if isinstance(start_date, date) and isinstance(end_date, date):
-            if (
-                start_date == expected_start_date
-                and end_date == expected_end_date
-                and len(date_range) == (end_date - start_date).days + 1
-            ):
-                self.logger.info(
-                    "Forecast data exists as expected. Skipping data retrieval..."
-                )
-                return True
-            else:
-                self.logger.info(
-                    f"Schema:\nStart Date : {start_date}, End Date: {end_date}, Date Range: {len(date_range)} days\nDoes not match expected schema:\nStart Date : {expected_start_date}, End Date: {expected_end_date}, Date Range: {(end_date - start_date).days + 1} days"
-                )
-                return False
-        else:
-            self.logger.info(
-                f"Data does not match expected type:\nStart Date: {start_date} Type: {type(start_date)}; End Date: {end_date} Type: {type(end_date)}"
-            )
-            return False
 
     def get_data(self, url: str, params: Dict[str, Any]) -> List[WeatherApiResponse]:
         """_summary_
@@ -582,9 +490,17 @@ class OpenMeteoForecastClient(OpenMeteoClient):
 
     def main(self) -> None:
         """_summary_"""
-        if not self.check_data_exists():
+        if not self.database.health_check(
+            start_date=date.today() - timedelta(days=self.QUERY_PARAMS["past_days"]),
+            end_date=(
+                date.today()
+                + timedelta(days=self.QUERY_PARAMS["forecast_days"])
+                - timedelta(days=1)
+            ),
+            table=DailyWeatherForecast,
+        ):
             self.logger.info("Cleaning table...")
-            self.DB_SESSION.execute(delete(DailyWeatherForecast))
+            self.database.truncate_table(DailyWeatherForecast)
             data = pd.DataFrame()
             for response in self.get_data(
                 url=OpenMeteoForecastClient.URL, params=self.QUERY_PARAMS
@@ -603,15 +519,17 @@ class OpenMeteoForecastClient(OpenMeteoClient):
             ).dt.strftime("%Y-%m-%d")
 
             self.logger.info("Writing data to database...")
-            records = data.to_dict(orient="records")
-            orm_objects = [
-                DailyWeatherForecast(**{str(k): v for k, v in row.items()})
-                for row in records
-            ]
 
-            self.DB_SESSION.add_all(orm_objects)
-            self.DB_SESSION.commit()
+            orm_objects = self.database.create_orm_objects(
+                data=data, table=DailyWeatherForecast
+            )
 
-        self.DB_SESSION.close()
+            self.database.write_data(orm_objects)
+        else:
+            self.logger.info(
+                "Forecast data exists as expected. Skipping data retrieval..."
+            )
+
+        self.database.close()
 
         self.logger.info(f"{self.__class__.__name__} exited successfully.")

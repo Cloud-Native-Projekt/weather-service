@@ -3,6 +3,7 @@ from .models import (
     DailyWeatherForecast,
     DailyWeatherHistory,
     DatabaseEngine,
+    WeatherDatabase,
     WeeklyWeatherForecast,
     WeeklyWeatherHistory,
 )

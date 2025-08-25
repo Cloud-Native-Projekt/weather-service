@@ -1,6 +1,10 @@
+import logging
 import os
 from abc import ABC, ABCMeta
+from datetime import date, timedelta
+from typing import Any, Dict, Iterable, List, Sequence, Type, TypeVar, get_type_hints
 
+import pandas as pd
 from sqlalchemy import (
     CheckConstraint,
     Column,
@@ -9,9 +13,12 @@ from sqlalchemy import (
     Integer,
     String,
     create_engine,
+    delete,
+    distinct,
+    select,
 )
 from sqlalchemy.ext.declarative import DeclarativeMeta
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 
 class CombinedMeta(DeclarativeMeta, ABCMeta):
@@ -68,9 +75,7 @@ class WeeklyWeatherForecast(WeatherBase):
     source = Column(String(length=32), nullable=False)
 
     __table_args__ = (
-        CheckConstraint(
-            "source IN ('Open Meteo', 'Placeholder')", name="check_source"
-        ),  # TODO: replace placeholder
+        CheckConstraint("source IN ('Open Meteo', 'Placeholder')", name="check_source"),
     )
 
 
@@ -92,3 +97,123 @@ class DatabaseEngine:
     @property
     def get_engine(self):
         return self.__engine
+
+
+WeatherTable = TypeVar("WeatherTable", bound=WeatherBase)
+
+
+class WeatherDatabase:
+    def __init__(self) -> None:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s - %(levelname)s - %(message)s",
+        )
+        self.logger = logging.getLogger(name=self.__class__.__name__)
+
+        self.DB_SESSION = sessionmaker(bind=DatabaseEngine().get_engine)()
+
+    def create_orm_objects(
+        self, data: Dict[Any, Any] | pd.DataFrame, table: Type[WeatherTable]
+    ) -> List[WeatherTable]:
+        """Function to create SQLAlchemy ORM objects from Python data structures.
+
+        Args:
+            data (Dict[Any, Any] | pd.DataFrame): Data to create SQLAlchemy ORM objects from.
+            table (Type[WeatherTable]): ORM class to create objects from. Can be any class that inherits from WeatherBase.
+
+        Raises:
+            TypeError: When the data does not match expected type.
+
+        Returns:
+            List[WeatherTable]: A list of ORM objects.
+        """
+        if isinstance(data, pd.DataFrame):
+            records = data.to_dict(orient="records")
+        elif isinstance(data, Dict):
+            records = data.copy()
+        else:
+            raise TypeError(
+                f"Data does not match expected type. Expected: {get_type_hints(self.create_orm_objects).get("data")} Got {type(data)} instead."
+            )
+
+        orm_objects = [table(**{str(k): v for k, v in row.items()}) for row in records]
+
+        return orm_objects
+
+    def write_data(self, orm_objects: WeatherTable | Iterable[WeatherTable]) -> None:
+        """Writes SQLAlchemy ORM objects to database.
+
+        Args:
+            orm_objects (WeatherTable | Iterable[WeatherTable]: Single instance or iterable of ORM objects.
+
+        Raises:
+            TypeError: When the ORM objects do not match expected type.
+        """
+        if isinstance(orm_objects, WeatherBase):
+            self.DB_SESSION.add(orm_objects)
+        elif hasattr(orm_objects, "__iter__"):
+            self.DB_SESSION.add_all(orm_objects)
+        else:
+            raise TypeError(
+                f"Data does not match expected type. Expected: {get_type_hints(self.write_data).get("orm_objects")} Got {type(orm_objects)} instead."
+            )
+
+        self.DB_SESSION.commit()
+
+    def health_check(
+        self,
+        start_date: date,
+        end_date: date,
+        table: Type[DailyWeatherHistory] | Type[DailyWeatherForecast],
+    ) -> bool:
+        date_range = self.check_date_range(start_date, end_date, table)
+
+        return date_range
+
+    def check_date_range(
+        self,
+        start_date: date,
+        end_date: date,
+        table: Type[DailyWeatherHistory] | Type[DailyWeatherForecast],
+    ):
+        available_dates = self.DB_SESSION.scalars(select(distinct(table.date))).all()
+
+        expected_dates = {
+            start_date + timedelta(days=i)
+            for i in range((end_date - start_date).days + 1)
+        }
+
+        if expected_dates.issubset(available_dates):
+            self.logger.info("Data exists as expected.")
+            return True
+        else:
+            self.logger.info(
+                f"Data does not contain all expected dates. Expected start date: {start_date} Actual start date: {available_dates[0]} Expected end date: {end_date} Actual end date: {available_dates[-1]}"
+            )
+            return False
+
+    def truncate_table(self, table: Type[WeatherTable]) -> None:
+        """Truncates a given WeatherTable.
+
+        Args:
+            table (Type[WeatherTable]): WeatherTable to truncate.
+        """
+        self.logger.info(f"Truncating table {table}...")
+        self.DB_SESSION.execute(delete(table))
+
+    def get_table(self, table: Type[WeatherTable]) -> Sequence[WeatherTable]:
+        """Retrieves a given WeatherTable.
+
+        Args:
+            table (Type[WeatherTable]): WeatherTable to retrieve.
+
+        Returns:
+            Sequence[WeatherTable]: Sequence containing the data.
+        """
+        self.logger.info(f"Retrieving table {table}...")
+        return self.DB_SESSION.scalars(select(table)).all()
+
+    def close(self) -> None:
+        """Closes the session to the database. All operations should be completed before calling this method."""
+        self.logger.info("Closing Database Session...")
+        self.DB_SESSION.close()
