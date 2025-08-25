@@ -2,6 +2,7 @@ import json
 import logging
 import os
 from abc import ABC, abstractmethod
+from dataclasses import InitVar, dataclass, field
 from datetime import date, datetime, timedelta
 from time import sleep
 from typing import Any, Dict, List, Tuple
@@ -10,15 +11,234 @@ import numpy as np
 import openmeteo_requests
 import pandas as pd
 import requests_cache
-from niquests import Session
 from numpy.typing import NDArray
 from openmeteo_sdk.VariablesWithTime import VariablesWithTime
 from openmeteo_sdk.VariableWithValues import VariableWithValues
 from openmeteo_sdk.WeatherApiResponse import WeatherApiResponse
 from retry_requests import retry
-from sqlalchemy.orm import Session
 
 from models import DailyWeatherForecast, DailyWeatherHistory, WeatherDatabase
+
+
+@dataclass
+class OpenMeteoClientConfig:
+    history_start_date: date = field(init=False)
+    history_end_date: date = field(init=False)
+    forecast_days: int = field(init=False)
+    forecast_past_days: int = field(init=False)
+    locations: NDArray = field(init=False)
+    metrics: List[str] = field(init=False)
+    create_from_file: InitVar[bool] = field(default=False)
+    config_file: InitVar[str | None] = field(default=None)
+
+    def __post_init__(self, create_from_file: bool, config_file: str | None, **kwargs):
+        if create_from_file:
+            if config_file:
+                config = self.__get_config(config_file)
+
+                self.__set_history_start_date(config.get("history_start_date"))
+                self.__set_history_end_date(config.get("history_end_date"))
+                self.__set_forecast_days(config.get("forecast_days"))
+                self.__set_forecast_past_days(config.get("forecast_past_days"))
+                self.__set_locations(config.get("bounding_box"))
+                self.__set_metrics(config.get("metrics"))
+            else:
+                raise ValueError(
+                    "Parameter config_file is required, when create_from_file=True"
+                )
+
+        else:
+            self.__set_history_start_date(kwargs.get("history_start_date"))
+            self.__set_history_end_date(kwargs.get("history_end_date"))
+            self.__set_forecast_days(kwargs.get("forecast_days"))
+            self.__set_forecast_past_days(kwargs.get("forecast_past_days"))
+            self.__set_locations(kwargs.get("bounding_box"))
+            self.__set_metrics(kwargs.get("metrics"))
+
+    def __get_config(self, config_file: str) -> Dict[str, Any]:
+        """Load config from file.
+
+        Args:
+            config_file (str): Path to the config file.
+
+        Returns:
+            Dict: Config.
+        """
+        with open(file=config_file, mode="r") as file:
+            config = json.load(fp=file)
+            file.close()
+
+        return config
+
+    def __parse_date(self, date_string: str) -> date:
+        """Parses a date from a string.
+
+        Args:
+            date str: Date in string format.
+
+        Returns:
+            date: Parsed datetime.date object.
+        """
+        return datetime.strptime(date_string, "%Y-%m-%d").date()
+
+    def __compute_end_date(self) -> date:
+        """Computes the end date as the date two days prior if end date is configured as latest.
+
+        The Open Meteo Historical API provides data with a delay of two days.
+
+        Returns:
+            date: Computed datetime.date object.
+        """
+        return date.today() - timedelta(days=2)
+
+    def __create_locations(self, bounding_box: Any, step: float = 0.5) -> NDArray:
+        """Creates a matrix representing a grid of Lat. and Long. coordinates inside a bounding box.
+
+        Args:
+            bounding_box Any: Bounding box to create the grid in. Represented as extreme points of the coordinate grid.
+            step (float, optional): Lat. and Long. steps to take. Defaults to 0.5.
+
+        Raises:
+            ValueError: When bounding_box does not match: {Dict[str, float]} with schema: {dict(north=float, south=float, east=float, west=float)}.
+
+        Returns:
+            NDArray: Matrix of Lat. and Long. coordinates.
+        """
+        if (
+            isinstance(bounding_box, dict)
+            and isinstance(bounding_box["south"], float)
+            and isinstance(bounding_box["north"], float)
+            and isinstance(bounding_box["west"], float)
+            and isinstance(bounding_box["east"], float)
+        ):
+            latitude_range = np.arange(
+                bounding_box["south"],
+                bounding_box["north"],
+                step,
+            )
+
+            longitude_range = np.arange(
+                bounding_box["west"], bounding_box["east"], step
+            )
+
+            lat_grid, lon_grid = np.meshgrid(
+                latitude_range, longitude_range, indexing="ij"
+            )
+
+            locations = np.column_stack([lat_grid.ravel(), lon_grid.ravel()])
+
+            return locations
+        else:
+            raise ValueError(
+                f"Kwarg bounding_box is required when create_from_file=False. Expected {Dict[str, float]} with schema: {dict(north=float, south=float, east=float, west=float)} Instead received: {bounding_box}"
+            )
+
+    def __set_history_start_date(self, history_start_date: Any) -> None:
+        """Validates and sets the history_start_date attribute.
+
+        Args:
+            history_start_date (Any): Given value for history_start_date kwarg.
+
+        Raises:
+            ValueError: When history_start_date is not of expected type.
+        """
+        if isinstance(history_start_date, str):
+            self.history_start_date = self.__parse_date(history_start_date)
+        elif isinstance(history_start_date, date):
+            self.history_start_date = history_start_date
+        else:
+            raise ValueError(
+                f"Kwarg history_start_date is required when create_from_file=False. Expected {type(OpenMeteoClientConfig.history_start_date)} Received {type(history_start_date)} instead."
+            )
+
+    def __set_history_end_date(self, history_end_date: Any) -> None:
+        """Validates and sets the history_end_date attribute.
+
+        Args:
+            history_end_date (Any): Given value for history_end_date kwarg.
+
+        Raises:
+            ValueError: When history_end_date is not of expected type.
+        """
+        if isinstance(history_end_date, str):
+            if history_end_date == "latest":
+                self.history_end_date = self.__compute_end_date()
+            else:
+                self.history_end_date = self.__parse_date(history_end_date)
+        elif isinstance(history_end_date, date):
+            self.history_end_date = history_end_date
+        else:
+            raise ValueError(
+                f"Kwarg history_end_date is required when create_from_file=False. Expected {type(OpenMeteoClientConfig.history_end_date)} Received {type(history_end_date)} instead."
+            )
+
+    def __set_forecast_days(self, forecast_days: Any) -> None:
+        """Validates and sets the forecast_days attribute.
+
+        Args:
+            forecast_days (Any): Given value for forecast_days kwarg.
+
+        Raises:
+            ValueError: When forecast_days not >0.
+            ValueError: When forecast_days is not of expected type.
+        """
+        if isinstance(forecast_days, int):
+            if forecast_days > 0:
+                self.forecast_days = forecast_days
+            else:
+                raise ValueError(
+                    f"Parameter forecast_days must be >0. Got {forecast_days}"
+                )
+        else:
+            raise ValueError(
+                f"Kwarg forecast_days is required when create_from_file=False. Expected {type(OpenMeteoClientConfig.forecast_days)} Received {type(forecast_days)} instead."
+            )
+
+    def __set_forecast_past_days(self, forecast_past_days: Any) -> None:
+        """Validates and sets the forecast_past_days attribute.
+
+        Args:
+            forecast_past_days (Any): Given value for forecast_past_days kwarg.
+
+        Raises:
+            ValueError: When forecast_past_days between 1 and 5 (incl.)
+            ValueError: When forecast_past_days is not of expected type.
+        """
+        if isinstance(forecast_past_days, int):
+            if 5 >= forecast_past_days > 0:
+                self.forecast_past_days = forecast_past_days
+            else:
+                raise ValueError(
+                    f"Parameter forecast_past_days must be between 1 and 5(incl.) Got {forecast_past_days}"
+                )
+        else:
+            raise ValueError(
+                f"Kwarg forecast_past_days is required when create_from_file=False. Expected {type(OpenMeteoClientConfig.forecast_past_days)} Received {type(forecast_past_days)} instead."
+            )
+
+    def __set_locations(self, bounding_box: Any) -> None:
+        """Validates and sets the locations attribute.
+
+        Args:
+            bounding_box (Any): Bounding box to create the grid in. Represented as extreme points of the coordinate grid.
+        """
+        self.locations = self.__create_locations(bounding_box)
+
+    def __set_metrics(self, metrics: Any) -> None:
+        """Validates and sets the metrics attribute.
+
+        Args:
+            metrics (Any): Given value for metrics kwarg.
+
+        Raises:
+            ValueError: When metrics is not of expected type.
+        """
+        if isinstance(metrics, list):
+            self.metrics = [str(metric) for metric in metrics]
+        else:
+            raise ValueError(
+                f"Kwarg metrics is required when create_from_file=False. Expected {type(OpenMeteoClientConfig.metrics)} Received {type(metrics)} instead."
+            )
 
 
 class OpenMeteoClient(ABC, openmeteo_requests.Client):
@@ -36,24 +256,20 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
     HOURLY_BACKOFF = 3601
     DAILY_BACKOFF = 86401
 
-    def __init__(self, session: Session = SESSION):  # type: ignore
+    def __init__(self, create_from_file: bool):  # type: ignore
         """_summary_
 
         Args:
             session (Session, optional): _description_. Defaults to SESSION.
         """
-        super().__init__(session)  # type: ignore
+        super().__init__(OpenMeteoClient.SESSION)  # type: ignore
 
-        CONFIG_FILE = os.getenv("CONFIG_FILE")
-
-        if isinstance(CONFIG_FILE, str):
-            self.CONFIG_FILE_PATH = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), CONFIG_FILE
-            )
-        else:
-            raise TypeError(
-                f"Provided argument for $CONFIG_FILE {CONFIG_FILE} does not match expected type. Expected: str, got {type(CONFIG_FILE)} instead."
-            )
+        self.config = OpenMeteoClientConfig(
+            create_from_file=create_from_file,
+            config_file=os.path.join(
+                os.path.dirname(__file__), os.getenv("CONFIG_FILE", "config.json")
+            ),
+        )
 
         logging.basicConfig(
             level=logging.INFO,
@@ -61,8 +277,12 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
         )
         self.logger = logging.getLogger(name=self.__class__.__name__)
 
+        self.logger.info(f"Setting up {self.__class__.__name__}")
+
+        self.database = WeatherDatabase()
+
     @abstractmethod
-    def get_data(self, url: str, params: Dict[str, Any]) -> List[WeatherApiResponse]:
+    def get_data(self, url: str) -> List[WeatherApiResponse]:
         """_summary_
 
         Args:
@@ -172,7 +392,7 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
         return values
 
     def process_response(
-        self, response: WeatherApiResponse, params: Dict[str, Any]
+        self, response: WeatherApiResponse, config: OpenMeteoClientConfig
     ) -> pd.DataFrame:
         """_summary_
 
@@ -190,7 +410,7 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
 
         if isinstance(daily, VariablesWithTime):
             variables = [
-                self.extract_variable(idx, daily) for idx in range(len(params["daily"]))
+                self.extract_variable(idx, daily) for idx in range(len(config.metrics))
             ]
 
             daily_data = {
@@ -202,7 +422,7 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
                 )
             }
 
-            for idx, variable_name in enumerate(params["daily"]):
+            for idx, variable_name in enumerate(config.metrics):
                 daily_data[variable_name] = variables[idx].tolist()
 
         else:
@@ -232,43 +452,7 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
 
     FRACTIONAL_API_COST = 31.3
 
-    def __init__(self, session: Session = OpenMeteoClient.SESSION):  # type: ignore
-        """_summary_
-
-        Args:
-            session (Session, optional): _description_. Defaults to SESSION.
-        """
-        super().__init__(session)
-
-        self.logger.info(f"Setting up {self.__class__.__name__}")
-
-        self.database = WeatherDatabase()
-
-        with open(file=self.CONFIG_FILE_PATH, mode="r") as file:
-            config = json.load(fp=file)
-            file.close()
-
-        latitude_range = np.arange(
-            config["bounding_box"]["south_boundary"],
-            config["bounding_box"]["north_boundary"],
-            0.5,
-        )
-        longitude_range = np.arange(
-            config["bounding_box"]["west_boundary"],
-            config["bounding_box"]["east_boundary"],
-            0.5,
-        )
-        lat_grid, lon_grid = np.meshgrid(latitude_range, longitude_range, indexing="ij")
-        locations = np.column_stack([lat_grid.ravel(), lon_grid.ravel()])
-
-        self.QUERY_PARAMS = {
-            "locations": locations,
-            "start_date": config["history_start_date"],
-            "end_date": (datetime.today() - timedelta(days=2)).strftime("%Y-%m-%d"),
-            "daily": config["metrics_daily"],
-        }
-
-    def get_data(self, url: str, params: Dict[str, Any]) -> List[WeatherApiResponse]:
+    def get_data(self, url: str) -> List[WeatherApiResponse]:
         """_summary_
 
         Args:
@@ -280,16 +464,14 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
         """
         responses = []
 
-        locations: NDArray[np.float64] = params["locations"]
-
         years = list(
             range(
-                datetime.strptime(params["start_date"], "%Y-%m-%d").date().year,
-                datetime.strptime(params["end_date"], "%Y-%m-%d").date().year + 1,
+                self.config.history_start_date.year,
+                self.config.history_end_date.year + 1,
             )
         )
 
-        num_requests = locations.shape[0] * len(years)
+        num_requests = self.config.locations.shape[0] * len(years)
         time_estimate = self.get_request_time_estimate(num_requests)
 
         self.logger.info(
@@ -300,20 +482,20 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
         hourly_usage = 0.0
         daily_usage = 0.0
 
-        for location in locations:
+        for location in self.config.locations:
             for year in years:
                 start_date = date(year, 1, 1)
                 end_date = (
                     date(year, 12, 31)
                     if year < date.today().year
-                    else params["end_date"]
+                    else self.config.history_end_date
                 )
                 fractional_query_params = {
                     "latitude": location[0],
                     "longitude": location[1],
                     "start_date": start_date,
                     "end_date": end_date,
-                    "daily": params["daily"],
+                    "daily": self.config.metrics,
                 }
 
                 self.logger.info(
@@ -344,22 +526,16 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
     def main(self) -> None:
         """_summary_"""
         if not self.database.health_check(
-            start_date=datetime.strptime(
-                self.QUERY_PARAMS["start_date"], "%Y-%m-%d"
-            ).date(),
-            end_date=datetime.strptime(
-                self.QUERY_PARAMS["end_date"], "%Y-%m-%d"
-            ).date(),
+            start_date=self.config.history_start_date,
+            end_date=self.config.history_end_date,
             table=DailyWeatherHistory,
         ):
             self.logger.info("Cleaning table...")
             self.database.truncate_table(DailyWeatherHistory)
             data = pd.DataFrame()
-            for response in self.get_data(
-                url=OpenMeteoArchiveClient.URL, params=self.QUERY_PARAMS
-            ):
+            for response in self.get_data(url=OpenMeteoArchiveClient.URL):
                 processed_response = self.process_response(
-                    response=response, params=self.QUERY_PARAMS
+                    response=response, config=self.config
                 )
 
                 processed_response["latitude"] = response.Latitude()
@@ -394,43 +570,7 @@ class OpenMeteoForecastClient(OpenMeteoClient):
 
     FRACTIONAL_API_COST = 1.2
 
-    def __init__(self, session: Session = OpenMeteoClient.SESSION):  # type: ignore
-        """_summary_
-
-        Args:
-            session (Session, optional): _description_. Defaults to SESSION.
-        """
-        super().__init__(session)
-
-        self.logger.info(f"Setting up {self.__class__.__name__}")
-
-        self.database = WeatherDatabase()
-
-        with open(file=self.CONFIG_FILE_PATH, mode="r") as file:
-            config = json.load(fp=file)
-            file.close()
-
-        latitude_range = np.arange(
-            config["bounding_box"]["south_boundary"],
-            config["bounding_box"]["north_boundary"],
-            0.5,
-        )
-        longitude_range = np.arange(
-            config["bounding_box"]["west_boundary"],
-            config["bounding_box"]["east_boundary"],
-            0.5,
-        )
-        lat_grid, lon_grid = np.meshgrid(latitude_range, longitude_range, indexing="ij")
-        locations = np.column_stack([lat_grid.ravel(), lon_grid.ravel()])
-
-        self.QUERY_PARAMS = {
-            "locations": locations,
-            "past_days": config["forecast_past_days"],
-            "forecast_days": config["forecast_days"],
-            "daily": config["metrics_daily"],
-        }
-
-    def get_data(self, url: str, params: Dict[str, Any]) -> List[WeatherApiResponse]:
+    def get_data(self, url: str) -> List[WeatherApiResponse]:
         """_summary_
 
         Args:
@@ -442,9 +582,7 @@ class OpenMeteoForecastClient(OpenMeteoClient):
         """
         responses = []
 
-        locations: NDArray[np.float64] = params["locations"]
-
-        num_requests = locations.shape[0]
+        num_requests = self.config.locations.shape[0]
         time_estimate = self.get_request_time_estimate(num_requests)
 
         self.logger.info(
@@ -455,13 +593,13 @@ class OpenMeteoForecastClient(OpenMeteoClient):
         hourly_usage = 0.0
         daily_usage = 0.0
 
-        for location in locations:
+        for location in self.config.locations:
             fractional_query_params = {
                 "latitude": location[0],
                 "longitude": location[1],
-                "past_days": self.QUERY_PARAMS["past_days"],
-                "forecast_days": self.QUERY_PARAMS["forecast_days"],
-                "daily": params["daily"],
+                "past_days": self.config.forecast_past_days,
+                "forecast_days": self.config.forecast_days,
+                "daily": self.config.metrics,
             }
 
             self.logger.info(
@@ -490,10 +628,10 @@ class OpenMeteoForecastClient(OpenMeteoClient):
     def main(self) -> None:
         """_summary_"""
         if not self.database.health_check(
-            start_date=date.today() - timedelta(days=self.QUERY_PARAMS["past_days"]),
+            start_date=(date.today() - timedelta(days=self.config.forecast_past_days)),
             end_date=(
                 date.today()
-                + timedelta(days=self.QUERY_PARAMS["forecast_days"])
+                + timedelta(days=self.config.forecast_days)
                 - timedelta(days=1)
             ),
             table=DailyWeatherForecast,
@@ -501,11 +639,9 @@ class OpenMeteoForecastClient(OpenMeteoClient):
             self.logger.info("Cleaning table...")
             self.database.truncate_table(DailyWeatherForecast)
             data = pd.DataFrame()
-            for response in self.get_data(
-                url=OpenMeteoForecastClient.URL, params=self.QUERY_PARAMS
-            ):
+            for response in self.get_data(url=OpenMeteoForecastClient.URL):
                 processed_response = self.process_response(
-                    response=response, params=self.QUERY_PARAMS
+                    response=response, config=self.config
                 )
 
                 processed_response["latitude"] = response.Latitude()

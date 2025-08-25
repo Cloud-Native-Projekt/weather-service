@@ -1,14 +1,15 @@
 {
-    "bounding_box": {
-        "north_boundary": 71.0,
-        "south_boundary": 36.0,
-        "west_boundary": 9.0,
-        "east_boundary": 68.0
-    },
     "history_start_date": "2001-01-01",
-    "forecast_past_days": 1,
+    "history_end_date": "latest",
     "forecast_days": 16,
-    "metrics_daily": [
+    "forecast_past_days": 1,
+    "bounding_box": {
+        "north": 71.0,
+        "south": 36.0,
+        "west": 9.0,
+        "east": 68.0
+    },
+    "metrics": [
         "temperature_2m_mean",
         "temperature_2m_max",
         "temperature_2m_min",
