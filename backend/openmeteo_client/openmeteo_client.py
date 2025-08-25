@@ -16,7 +16,6 @@ from openmeteo_sdk.VariablesWithTime import VariablesWithTime
 from openmeteo_sdk.VariableWithValues import VariableWithValues
 from openmeteo_sdk.WeatherApiResponse import WeatherApiResponse
 from retry_requests import retry
-from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from models import DailyWeatherForecast, DailyWeatherHistory, WeatherDatabase
