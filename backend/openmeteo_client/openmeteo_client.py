@@ -31,7 +31,55 @@ class OpenMeteoClientConfig:
     create_from_file: InitVar[bool] = field(default=False)
     config_file: InitVar[str | None] = field(default=None)
 
-    def __post_init__(self, create_from_file: bool, config_file: str | None, **kwargs):
+    def __post_init__(
+        self, create_from_file: bool, config_file: str | None, **kwargs: Any
+    ):
+        """Initializes an OpenMeteoClientConfig from a config file or kwargs.
+
+        Config parameters are:
+            - history_start_date: Start date of historical weather data. Must be before history_end_date
+            - history_end_date: End date of historical weather data. Must be at least two days before the current date. If "latest", defaults to two days before the current date.
+            - forecast_days: Number of days to retrieve forecast for. Must be between 1 and 16 (incl.)
+            - forecast_past_days: Currently non-functional. Must be 1.
+            - bounding_box: Outer most coordinates to create a coordinate grid within. Used for computing locations to get weather data for. Must be of scheme: {"north": float, "south": float, "west": float, "east": float}.
+            - metrics: List of metrics to retrieve. Can be any daily metric supported by Open Meteo Historic and Forecast APIs.
+
+        Kwargs are required when no config file is given.
+
+        Config file needs to be in json format and of the following schema:
+
+        {
+            "history_start_date": "YYYY-MM-DD",
+            "history_end_date": "latest" | "YYYY-MM-DD",
+            "forecast_days": int,
+            "forecast_past_days": int,
+            "bounding_box": {
+                "north": float,
+                "south": float,
+                "west": float,
+                "east": float
+            },
+            "metrics": [
+                "daily_metric",
+                "daily_metric",
+            ]
+        }
+
+        Args:
+            create_from_file (bool): Indicates whether to load config parameters from a file.
+            config_file (str | None): Path to config file. Required when create_from_file=True.
+
+        Kwargs:
+            history_start_date (str | date)
+            history_end_date (str | date)
+            forecast_days (int)
+            forecast_past_days (int),
+            bounding_box (Dict[str, float])
+            metrics (List[str])
+
+        Raises:
+            ValueError: When config_file is not given, but create_from_file=True.
+        """
         if create_from_file:
             if config_file:
                 config = self.__get_config(config_file)
