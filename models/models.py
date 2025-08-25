@@ -188,7 +188,7 @@ class WeatherDatabase:
             return True
         else:
             self.logger.info(
-                f"Data does not contain all expected dates. Expected start date: {start_date} Actual start date: {available_dates[0]} Expected end date: {end_date} Actual end date: {available_dates[-1]}"
+                f"Data does not contain all expected dates. Expected start date: {start_date} Expected end date: {end_date} Got: {available_dates}"
             )
             return False
 
