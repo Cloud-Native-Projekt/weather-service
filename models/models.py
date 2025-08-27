@@ -2,17 +2,7 @@ import logging
 import os
 from abc import ABC, ABCMeta
 from datetime import date, timedelta
-from typing import (
-    Any,
-    Dict,
-    Iterable,
-    List,
-    Sequence,
-    Tuple,
-    Type,
-    TypeVar,
-    get_type_hints,
-)
+from typing import Any, Dict, Iterable, List, Sequence, Type, TypeVar, get_type_hints
 from warnings import deprecated
 
 import pandas as pd
@@ -26,7 +16,6 @@ from sqlalchemy import (
     create_engine,
     delete,
     distinct,
-    func,
     inspect,
     select,
 )
