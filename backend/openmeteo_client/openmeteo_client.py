@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from dataclasses import InitVar, dataclass, field
 from datetime import date, datetime, timedelta
 from time import sleep
-from typing import Any, Dict, List, Literal, Tuple, Type
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 import openmeteo_requests
@@ -22,17 +22,22 @@ from models import WeatherDatabase
 
 @dataclass
 class OpenMeteoClientConfig:
-    history_start_date: date = field(init=False)
+    history_start_date: date = field(init=False, metadata={"format": "YYYY-MM-DD"})
     history_end_date: date = field(init=False)
     forecast_days: int = field(init=False)
     forecast_past_days: int = field(init=False)
-    locations: NDArray = field(init=False)
+    bounding_box: Dict[str, float] = field(init=False)
     metrics: List[str] = field(init=False)
+    locations: NDArray = field(init=False)
     create_from_file: InitVar[bool] = field(default=False)
     config_file: InitVar[str | None] = field(default=None)
+    kwargs: InitVar[Dict[str, Any] | None] = field(default=None)
 
     def __post_init__(
-        self, create_from_file: bool, config_file: str | None, **kwargs: Any
+        self,
+        create_from_file: bool,
+        config_file: str | None,
+        kwargs: Dict[str, Any] | None,
     ):
         """Initializes an OpenMeteoClientConfig from a config file or kwargs. Kwargs overwrite parameters from config file if set.
 
@@ -68,6 +73,7 @@ class OpenMeteoClientConfig:
         Args:
             create_from_file (bool): Indicates whether to load config parameters from a file.
             config_file (str | None): Path to config file. Required when create_from_file=True. Defaults to {parentdir}/config.json
+            kwargs (Dict[str, Any] | None): Required when create_from_file=False. Can be used to overwrite parameters from config file when create_from_file=True.
 
         Kwargs:
             history_start_date (str | date)
@@ -95,15 +101,19 @@ class OpenMeteoClientConfig:
             self.__set_locations(config.get("bounding_box"))
             self.__set_metrics(config.get("metrics"))
 
-            self.__overwrite_kwargs(kwargs)
+            if kwargs:
+                self.__overwrite_kwargs(kwargs)
 
         else:
-            self.__set_history_start_date(kwargs.get("history_start_date"))
-            self.__set_history_end_date(kwargs.get("history_end_date"))
-            self.__set_forecast_days(kwargs.get("forecast_days"))
-            self.__set_forecast_past_days(kwargs.get("forecast_past_days"))
-            self.__set_locations(kwargs.get("bounding_box"))
-            self.__set_metrics(kwargs.get("metrics"))
+            if kwargs:
+                self.__set_history_start_date(kwargs.get("history_start_date"))
+                self.__set_history_end_date(kwargs.get("history_end_date"))
+                self.__set_forecast_days(kwargs.get("forecast_days"))
+                self.__set_forecast_past_days(kwargs.get("forecast_past_days"))
+                self.__set_locations(kwargs.get("bounding_box"))
+                self.__set_metrics(kwargs.get("metrics"))
+            else:
+                raise ValueError("Kwargs are required when create_from_file=False.")
 
     def __get_config(self, config_file: str) -> Dict[str, Any]:
         """Load config from file.
@@ -563,7 +573,11 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
 
         for location in self.config.locations:
             for year in years:
-                start_date = date(year, 1, 1)
+                start_date = (
+                    date(year, 1, 1)
+                    if date(year, 1, 1) > self.config.history_start_date
+                    else self.config.history_start_date
+                )
                 end_date = (
                     date(year, 12, 31)
                     if year < date.today().year

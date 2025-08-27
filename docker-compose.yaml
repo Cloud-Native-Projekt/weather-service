@@ -36,43 +36,25 @@ services:
         condition: service_healthy
         restart: true
 
-
-# openmeteo_client:
-#   build:
-#     context: ./openmeteo_client
-#     dockerfile: Dockerfile
-#   container_name: openmeteo_client
-#   restart: on-failure
-#   environment:
-#     POSTGRES_HOST: postgres
-#     POSTGRES_PORT: 5432
-#     POSTGRES_DB: weatherdb
-#     POSTGRES_USER: myuser
-#     POSTGRES_PASSWORD: pw
-#   depends_on:
-#     postgres:
-#       condition: service_healthy
-#     db_init:
-#       condition: service_completed_successfully
-
-# api:
-#   build:
-#     context: ./api
-#     dockerfile: Dockerfile
-#   container_name: api
-#   restart: on-failure
-#   environment:
-#     POSTGRES_HOST: postgres
-#     POSTGRES_PORT: 5432
-#     POSTGRES_DB: weatherdb
-#     POSTGRES_USER: myuser
-#     POSTGRES_PASSWORD: pw
-#   ports:
-#     - "8001:8001"
-#   depends_on:
-#     postgres:
-#       condition: service_healthy
-
+  maintenance_service:
+    build:
+      context: .
+      dockerfile: backend/maintenance_service/Dockerfile
+    container_name: weather_maintenance_service
+    restart: no
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: weatherdb
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: pw
+      CONFIG_FILE: dev_config.json
+    depends_on:
+      database:
+        condition: service_healthy
+        restart: true
+      bootstrap_service:
+        condition: service_completed_successfully
 
 volumes:
   data:

@@ -2,9 +2,17 @@ import logging
 import os
 from abc import ABC, ABCMeta
 from datetime import date, timedelta
-from sys import implementation
-from types import NotImplementedType
-from typing import Any, Dict, Iterable, List, Sequence, Type, TypeVar, get_type_hints
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    List,
+    Sequence,
+    Tuple,
+    Type,
+    TypeVar,
+    get_type_hints,
+)
 
 import pandas as pd
 from sqlalchemy import (
@@ -17,6 +25,7 @@ from sqlalchemy import (
     create_engine,
     delete,
     distinct,
+    func,
     inspect,
     select,
 )
@@ -273,6 +282,56 @@ class WeatherDatabase:
         self.logger.info(f"Retrieving table {table}...")
 
         return self.DB_SESSION.scalars(select(table)).all()
+
+    def __clone_model(
+        self,
+        source_obj: WeatherTable,
+        target_cls: Type[WeatherTable],
+        exclude: Iterable[str] = ("idx", "source"),
+    ) -> WeatherTable:
+        """Creates a WeatherTable object from another WeatherTable object. ORM models must be compatible with each other.
+
+        Args:
+            source_obj (WeatherTable): Source ORM object.
+            target_cls (WeatherTable): Source ORM object.
+            exclude (Iterable[str], optional): Defines fields to ignore. Defaults to ("idx", "source").
+
+        Returns:
+            WeatherTable: Cloned WeatherTable ORM object.
+        """
+
+        target_object = target_cls(
+            **{
+                k: getattr(source_obj, k)
+                for k in source_obj.__table__.columns.keys()
+                if k not in exclude
+            }
+        )
+
+        return target_object
+
+    def rollover_weekly_data(self, rollover_year: int, rollover_week: int) -> None:
+        """Function to copy weekly data within the rollover window from WeeklyWeatherForecast to WeeklyWeatherHistory.
+
+        Args:
+            rollover_year (int): Year of data to rollover.
+            rollover_week (int): Calendar week of data to rollover.
+        """
+        source_data = self.DB_SESSION.scalars(
+            select(WeeklyWeatherForecast).where(
+                (WeeklyWeatherForecast.year == rollover_year)
+                and (WeeklyWeatherForecast.week == rollover_week)
+            )
+        ).all()
+
+        self.DB_SESSION.delete(source_data)
+
+        target_data = [
+            self.__clone_model(source_obj=entry, target_cls=WeeklyWeatherHistory)
+            for entry in source_data
+        ]
+
+        self.write_data(target_data)
 
     def close(self) -> None:
         """Closes the session to the database. All operations should be completed before calling this method."""
