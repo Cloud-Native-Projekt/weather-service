@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from dataclasses import InitVar, dataclass, field
 from datetime import date, datetime, timedelta
 from time import sleep
-from typing import Any, Dict, List, Tuple, Type
+from typing import Any, Dict, List, Literal, Tuple, Type
 
 import numpy as np
 import openmeteo_requests
@@ -34,7 +34,7 @@ class OpenMeteoClientConfig:
     def __post_init__(
         self, create_from_file: bool, config_file: str | None, **kwargs: Any
     ):
-        """Initializes an OpenMeteoClientConfig from a config file or kwargs.
+        """Initializes an OpenMeteoClientConfig from a config file or kwargs. Kwargs overwrite parameters from config file if set.
 
         Config parameters are:
             - history_start_date: Start date of historical weather data. Must be before history_end_date
@@ -90,6 +90,8 @@ class OpenMeteoClientConfig:
                 self.__set_forecast_past_days(config.get("forecast_past_days"))
                 self.__set_locations(config.get("bounding_box"))
                 self.__set_metrics(config.get("metrics"))
+
+                self.__overwrite_kwargs(kwargs)
             else:
                 raise ValueError(
                     "Parameter config_file is required, when create_from_file=True"
@@ -287,6 +289,25 @@ class OpenMeteoClientConfig:
             raise ValueError(
                 f"Kwarg metrics is required when create_from_file=False. Expected {type(OpenMeteoClientConfig.metrics)} Received {type(metrics)} instead."
             )
+
+    def __overwrite_kwargs(self, kwargs: Dict[str, Any]) -> None:
+        """Function to have kwargs overwrite config from file if set.
+
+        Args:
+            kwargs (Dict[str, Any]): kwargs passed to constructor.
+        """
+        if kwargs.get("history_start_date"):
+            self.__set_history_start_date(kwargs.get("history_start_date"))
+        if kwargs.get("history_end_date"):
+            self.__set_history_end_date(kwargs.get("history_end_date"))
+        if kwargs.get("forecast_days"):
+            self.__set_forecast_days(kwargs.get("forecast_days"))
+        if kwargs.get("forecast_past_days"):
+            self.__set_forecast_past_days(kwargs.get("forecast_past_days"))
+        if kwargs.get("bounding_box"):
+            self.__set_locations(kwargs.get("bounding_box"))
+        if kwargs.get("metrics"):
+            self.__set_metrics(kwargs.get("metrics"))
 
 
 class OpenMeteoClient(ABC, openmeteo_requests.Client):
