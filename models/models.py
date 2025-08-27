@@ -53,16 +53,16 @@ Bootstrap Operations:
         # Populate initial data via bootstrap service
 
 Data Operations:
-    # Convert DataFrame to ORM objects
-    objects = db.create_orm_objects(weather_df, DailyWeatherHistory)
-    db.write_data(objects)
+    Convert DataFrame to ORM objects:
+        objects = db.create_orm_objects(weather_df, DailyWeatherHistory)
+        db.write_data(objects)
 
-    # Query data
-    history = db.get_table(DailyWeatherHistory)
+    Query data:
+        history = db.get_table(DailyWeatherHistory)
 
-    # Maintenance operations
-    db.truncate_table(DailyWeatherForecast)
-    db.rollover_weekly_data(2024, 15)
+    Maintenance operations:
+        db.truncate_table(DailyWeatherForecast)
+        db.rollover_weekly_data(2024, 15)
 
 Session Management:
     try:
