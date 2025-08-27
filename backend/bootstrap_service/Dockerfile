@@ -1,10 +1,10 @@
-FROM python:3.13.6-bookworm AS builder
+FROM python:3.13.7-trixie AS builder
 
 WORKDIR /app
 COPY backend/requirements.txt .
 RUN pip install --user --no-cache-dir -r requirements.txt
 
-FROM python:3.13.6-slim-bookworm
+FROM python:3.13.7-slim-trixie
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
