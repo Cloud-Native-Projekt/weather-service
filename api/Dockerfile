@@ -1,30 +1,32 @@
-FROM python:3.13.6-bookworm
+FROM python:3.13.7-trixie AS builder
 
-# Install system packages
-RUN apt-get update && apt-get install -y \
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --user --no-cache-dir -r requirements.txt
+
+FROM python:3.13.7-slim-trixie
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    git \
  && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+RUN groupadd -r appuser --gid=1000 && useradd -r -g appuser --uid=1000 appuser
 
 WORKDIR /app/
 
-# Copy requirements
-COPY requirements.txt .
+# Copy installed packages from builder
+COPY --from=builder /root/.local /home/appuser/.local
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy application files
+COPY models/ ./models/
+COPY api .
 
-# Copy application code
-COPY . .
-
-# Change ownership to non-root user
 RUN chown -R appuser:appuser /app
 
-# Switch to non-root user
 USER appuser
+
+# Make sure scripts are in PATH
+ENV PATH=/home/appuser/.local/bin:$PATH
 
 # Add health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
@@ -33,5 +35,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # Expose port
 EXPOSE 8000
 
-# Entry point
-CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD [""]
