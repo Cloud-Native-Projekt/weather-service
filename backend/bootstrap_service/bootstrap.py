@@ -3,6 +3,7 @@ import logging
 import pandas as pd
 from openmeteo_client import (
     OpenMeteoArchiveClient,
+    OpenMeteoClientConfig,
     OpenMeteoForecastClient,
     WeeklyTableConstructor,
 )
@@ -33,13 +34,15 @@ if __name__ == "__main__":
         database.truncate_table(WeeklyWeatherHistory)
         database.truncate_table(WeeklyWeatherForecast)
 
-        ArchiveClient = OpenMeteoArchiveClient(create_from_file=True)
+        config = OpenMeteoClientConfig(create_from_file=True)
+
+        ArchiveClient = OpenMeteoArchiveClient(config)
         historic_data_daily = ArchiveClient.main()
         history_orm_objects_daily = database.create_orm_objects(
             data=historic_data_daily, table=DailyWeatherHistory
         )
 
-        ForecastClient = OpenMeteoForecastClient(create_from_file=True)
+        ForecastClient = OpenMeteoForecastClient(config)
         forecast_data_daily = ForecastClient.main()
         forecast_orm_objects_daily = database.create_orm_objects(
             data=forecast_data_daily, table=DailyWeatherForecast

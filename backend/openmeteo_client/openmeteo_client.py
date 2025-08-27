@@ -67,7 +67,7 @@ class OpenMeteoClientConfig:
 
         Args:
             create_from_file (bool): Indicates whether to load config parameters from a file.
-            config_file (str | None): Path to config file. Required when create_from_file=True.
+            config_file (str | None): Path to config file. Required when create_from_file=True. Defaults to {parentdir}/config.json
 
         Kwargs:
             history_start_date (str | date)
@@ -81,21 +81,21 @@ class OpenMeteoClientConfig:
             ValueError: When config_file is not given, but create_from_file=True.
         """
         if create_from_file:
-            if config_file:
-                config = self.__get_config(config_file)
-
-                self.__set_history_start_date(config.get("history_start_date"))
-                self.__set_history_end_date(config.get("history_end_date"))
-                self.__set_forecast_days(config.get("forecast_days"))
-                self.__set_forecast_past_days(config.get("forecast_past_days"))
-                self.__set_locations(config.get("bounding_box"))
-                self.__set_metrics(config.get("metrics"))
-
-                self.__overwrite_kwargs(kwargs)
-            else:
-                raise ValueError(
-                    "Parameter config_file is required, when create_from_file=True"
+            if not config_file:
+                config_file = os.path.join(
+                    os.path.dirname(__file__), os.getenv("CONFIG_FILE", "config.json")
                 )
+
+            config = self.__get_config(config_file)
+
+            self.__set_history_start_date(config.get("history_start_date"))
+            self.__set_history_end_date(config.get("history_end_date"))
+            self.__set_forecast_days(config.get("forecast_days"))
+            self.__set_forecast_past_days(config.get("forecast_past_days"))
+            self.__set_locations(config.get("bounding_box"))
+            self.__set_metrics(config.get("metrics"))
+
+            self.__overwrite_kwargs(kwargs)
 
         else:
             self.__set_history_start_date(kwargs.get("history_start_date"))
@@ -325,7 +325,7 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
     HOURLY_BACKOFF = 3601
     DAILY_BACKOFF = 86401
 
-    def __init__(self, create_from_file: bool):
+    def __init__(self, config: OpenMeteoClientConfig):
         """_summary_
 
         Args:
@@ -333,12 +333,7 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
         """
         super().__init__(OpenMeteoClient.SESSION)  # type: ignore
 
-        self.config = OpenMeteoClientConfig(
-            create_from_file=create_from_file,
-            config_file=os.path.join(
-                os.path.dirname(__file__), os.getenv("CONFIG_FILE", "config.json")
-            ),
-        )
+        self.config = config
 
         logging.basicConfig(
             level=logging.INFO,
@@ -624,8 +619,8 @@ class OpenMeteoForecastClient(OpenMeteoClient):
 
     FRACTIONAL_API_COST = 1.2
 
-    def __init__(self, create_from_file: bool):
-        super().__init__(create_from_file)
+    def __init__(self, config: OpenMeteoClientConfig):
+        super().__init__(config)
 
         self.start_date = date.today() - timedelta(days=self.config.forecast_past_days)
         self.end_date = (
