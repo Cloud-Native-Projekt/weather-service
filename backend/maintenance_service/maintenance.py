@@ -1,3 +1,40 @@
+"""Weather Service Maintenance Module
+
+This module implements the daily and weekly maintenance routines for the weather service.
+It handles data rollover, forecasting updates, and database maintenance operations.
+
+Daily Maintenance Operations:
+- Retrieves historical weather data for the rollover period (2 days ago)
+- Truncates and refreshes daily weather forecast data
+- Updates the database with new historical and forecast data
+
+Weekly Maintenance Operations (Mondays only):
+- Rolls over weekly forecast data to historical data for the previous week
+- Generates new weekly forecast data from daily forecasts
+- Maintains data integrity across weekly boundaries
+
+The maintenance service uses the OpenMeteo API clients to fetch weather data
+and the WeatherDatabase to manage data persistence. It automatically handles
+rate limiting and error recovery during API operations.
+
+Dependencies:
+- OpenMeteo API clients for historical and forecast data retrieval
+- WeatherDatabase for data persistence and management
+- Pandas for data manipulation and aggregation
+
+Usage:
+    This module is typically run as a scheduled (daily) job to ensure
+    the weather database remains current with fresh forecasts and properly
+    archived historical data.
+
+Example:
+    python maintenance.py
+
+Note:
+    Weekly maintenance only runs on Mondays (weekday == 0) to process the
+    previous week's data that has completed.
+"""
+
 import logging
 from datetime import date, timedelta
 
