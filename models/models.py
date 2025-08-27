@@ -117,7 +117,7 @@ class DatabaseEngine:
         """Initialize DatabaseEngine with PostgreSQL connection."""
         self.__engine = create_engine(
             f"{DatabaseEngine.__DIALECT}+{DatabaseEngine.__DRIVER}://{DatabaseEngine.__USER}:{DatabaseEngine.__PASSWORD}@{DatabaseEngine.__HOST}:{DatabaseEngine.__PORT}/{DatabaseEngine.__DATABASE}",
-            echo=True,
+            echo=False,
         )
 
     @property
