@@ -2,6 +2,8 @@ import logging
 import os
 from abc import ABC, ABCMeta
 from datetime import date, timedelta
+from sys import implementation
+from types import NotImplementedType
 from typing import Any, Dict, Iterable, List, Sequence, Type, TypeVar, get_type_hints
 
 import pandas as pd
@@ -15,6 +17,7 @@ from sqlalchemy import (
     create_engine,
     delete,
     distinct,
+    inspect,
     select,
 )
 from sqlalchemy.ext.declarative import DeclarativeMeta
@@ -110,7 +113,57 @@ class WeatherDatabase:
         )
         self.logger = logging.getLogger(name=self.__class__.__name__)
 
-        self.DB_SESSION = sessionmaker(bind=DatabaseEngine().get_engine)()
+        self.__engine = DatabaseEngine().get_engine
+
+        self.DB_SESSION = sessionmaker(bind=self.__engine)()
+
+    def create_tables(self) -> None:
+        """Creates all tables from base."""
+        Base.metadata.create_all(self.__engine)
+
+    def __bootstrap(self) -> bool:
+        """Checks whether the WeatherTables contain any data or should be bootstrapped.
+
+        Returns:
+            bool: True, if any WeatherTable does not contain data.
+        """
+        inspector = inspect(self.__engine)
+        tables = inspector.get_table_names()
+        expected_tables = [
+            "daily_history",
+            "daily_forecast",
+            "weekly_history",
+            "weekly_forecast",
+        ]
+        if tables == expected_tables:
+
+            self.logger.info(f"Tables {expected_tables} exist in weatherdb.")
+
+            daily_history = self.DB_SESSION.query(DailyWeatherHistory).first() is None
+            daily_forecast = self.DB_SESSION.query(DailyWeatherForecast).first() is None
+            weekly_history = self.DB_SESSION.query(WeeklyWeatherHistory).first() is None
+            weekly_forecast = (
+                self.DB_SESSION.query(WeeklyWeatherForecast).first() is None
+            )
+
+            if daily_history:
+                self.logger.info("Table daily_history is empty")
+            if daily_forecast:
+                self.logger.info("Table daily_forecast is empty")
+            if weekly_history:
+                self.logger.info("Table weekly_history is empty")
+            if weekly_forecast:
+                self.logger.info("Table weekly_forecast is empty")
+
+            bootstrap = (
+                daily_history or daily_forecast or weekly_history
+            ) or weekly_forecast
+
+        else:
+            self.logger.info(f"Tables {expected_tables} do not exist in weatherdb.")
+            bootstrap = True
+
+        return bootstrap
 
     def create_orm_objects(
         self, data: Dict[Any, Any] | pd.DataFrame, table: Type[WeatherTable]
@@ -166,11 +219,11 @@ class WeatherDatabase:
         end_date: date,
         table: Type[DailyWeatherHistory] | Type[DailyWeatherForecast],
     ) -> bool:
-        date_range = self.check_date_range(start_date, end_date, table)
+        date_range = self.__check_date_range(start_date, end_date, table)
 
         return date_range
 
-    def check_date_range(
+    def __check_date_range(
         self,
         start_date: date,
         end_date: date,
@@ -192,6 +245,13 @@ class WeatherDatabase:
             )
             return False
 
+    # def get_missing_dates(self, available_dates, expected_dates):
+    #     missing_dates = [
+    #         datum for datum in expected_dates if datum not in available_dates
+    #     ]
+
+    #     return missing_dates
+
     def truncate_table(self, table: Type[WeatherTable]) -> None:
         """Truncates a given WeatherTable.
 
@@ -211,9 +271,19 @@ class WeatherDatabase:
             Sequence[WeatherTable]: Sequence containing the data.
         """
         self.logger.info(f"Retrieving table {table}...")
+
         return self.DB_SESSION.scalars(select(table)).all()
 
     def close(self) -> None:
         """Closes the session to the database. All operations should be completed before calling this method."""
         self.logger.info("Closing Database Session...")
         self.DB_SESSION.close()
+
+    @property
+    def bootstrap(self) -> bool:
+        """Get bootstrap property of WeatherDatabase instance.
+
+        Returns:
+            bool: If True, continue with bootstrapping.
+        """
+        return self.__bootstrap()

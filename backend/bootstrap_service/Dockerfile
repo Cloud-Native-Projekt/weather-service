@@ -20,7 +20,7 @@ COPY --from=builder /root/.local /home/appuser/.local
 # Copy application files
 COPY models/ ./models/
 COPY backend/openmeteo_client/ ./openmeteo_client/
-COPY backend/init_service .
+COPY backend/bootstrap_service .
 
 RUN chown -R appuser:appuser /app
 
@@ -29,4 +29,4 @@ USER appuser
 # Make sure scripts are in PATH
 ENV PATH=/home/appuser/.local/bin:$PATH
 
-CMD ["sh", "-c", "python init.py && python post_init.py"]
+CMD ["python", "init.py"]

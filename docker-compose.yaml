@@ -18,11 +18,11 @@ services:
       timeout: 5s
       retries: 3
 
-  init_service:
+  bootstrap_service:
     build:
       context: .
-      dockerfile: backend/init_service/Dockerfile
-    container_name: init_service
+      dockerfile: backend/bootstrap_service/Dockerfile
+    container_name: weather_bootstrap_service
     restart: no
     environment:
       POSTGRES_HOST: postgres

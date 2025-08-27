@@ -1,1 +1,5 @@
-from .openmeteo_client import OpenMeteoArchiveClient, OpenMeteoForecastClient
+from .openmeteo_client import (
+    OpenMeteoArchiveClient,
+    OpenMeteoForecastClient,
+    WeeklyTableConstructor,
+)

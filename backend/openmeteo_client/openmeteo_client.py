@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from dataclasses import InitVar, dataclass, field
 from datetime import date, datetime, timedelta
 from time import sleep
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Type
 
 import numpy as np
 import openmeteo_requests
@@ -17,7 +17,7 @@ from openmeteo_sdk.VariableWithValues import VariableWithValues
 from openmeteo_sdk.WeatherApiResponse import WeatherApiResponse
 from retry_requests import retry
 
-from models import DailyWeatherForecast, DailyWeatherHistory, WeatherDatabase
+from models import WeatherDatabase
 
 
 @dataclass
@@ -480,18 +480,33 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
 
         return pd.DataFrame(data=daily_data)
 
-    @abstractmethod
-    def main(self) -> None:
+    def _main(self, url: str) -> pd.DataFrame:
         """_summary_
 
-        Raises:
-            TypeError: _description_
-            TypeError: _description_
+        Args:
+            url (str): _description_
 
         Returns:
-            _type_: _description_
+            pd.DataFrame: _description_
         """
-        pass
+        data = pd.DataFrame()
+        for response in self.get_data(url):
+            processed_response = self.process_response(
+                response=response, config=self.config
+            )
+
+            processed_response["latitude"] = response.Latitude()
+            processed_response["longitude"] = response.Longitude()
+
+            data = pd.concat([data, processed_response], axis=0)
+
+        data["date"] = pd.to_datetime(
+            data["date"], format="%Y-%m-%d %H:%M:%S"
+        ).dt.strftime("%Y-%m-%d")
+
+        self.logger.info(f"{self.__class__.__name__} exited successfully.")
+
+        return data
 
 
 class OpenMeteoArchiveClient(OpenMeteoClient):
@@ -571,45 +586,15 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
 
         return responses
 
-    def main(self) -> None:
-        """_summary_"""
-        if not self.database.health_check(
-            start_date=self.config.history_start_date,
-            end_date=self.config.history_end_date,
-            table=DailyWeatherHistory,
-        ):
-            self.logger.info("Cleaning table...")
-            self.database.truncate_table(DailyWeatherHistory)
-            data = pd.DataFrame()
-            for response in self.get_data(url=OpenMeteoArchiveClient.URL):
-                processed_response = self.process_response(
-                    response=response, config=self.config
-                )
+    def main(self) -> pd.DataFrame:
+        """_summary_
 
-                processed_response["latitude"] = response.Latitude()
-                processed_response["longitude"] = response.Longitude()
+        Returns:
+            pd.DataFrame: _description_
+        """
+        data = self._main(url=OpenMeteoArchiveClient.URL)
 
-                data = pd.concat([data, processed_response], axis=0)
-
-            data["date"] = pd.to_datetime(
-                data["date"], format="%Y-%m-%d %H:%M:%S"
-            ).dt.strftime("%Y-%m-%d")
-
-            self.logger.info("Writing data to database...")
-
-            orm_objects = self.database.create_orm_objects(
-                data=data, table=DailyWeatherHistory
-            )
-
-            self.database.write_data(orm_objects)
-        else:
-            self.logger.info(
-                "Historic data exists as expected. Skipping data retrieval..."
-            )
-
-        self.database.close()
-
-        self.logger.info(f"{self.__class__.__name__} exited successfully.")
+        return data
 
 
 class OpenMeteoForecastClient(OpenMeteoClient):
@@ -617,6 +602,14 @@ class OpenMeteoForecastClient(OpenMeteoClient):
     URL = "https://api.open-meteo.com/v1/forecast"
 
     FRACTIONAL_API_COST = 1.2
+
+    def __init__(self, create_from_file: bool):
+        super().__init__(create_from_file)
+
+        self.start_date = date.today() - timedelta(days=self.config.forecast_past_days)
+        self.end_date = (
+            date.today() + timedelta(days=self.config.forecast_days) - timedelta(days=1)
+        )
 
     def get_data(self, url: str) -> List[WeatherApiResponse]:
         """_summary_
@@ -673,46 +666,106 @@ class OpenMeteoForecastClient(OpenMeteoClient):
 
         return responses
 
-    def main(self) -> None:
-        """_summary_"""
-        if not self.database.health_check(
-            start_date=(date.today() - timedelta(days=self.config.forecast_past_days)),
-            end_date=(
-                date.today()
-                + timedelta(days=self.config.forecast_days)
-                - timedelta(days=1)
-            ),
-            table=DailyWeatherForecast,
-        ):
-            self.logger.info("Cleaning table...")
-            self.database.truncate_table(DailyWeatherForecast)
-            data = pd.DataFrame()
-            for response in self.get_data(url=OpenMeteoForecastClient.URL):
-                processed_response = self.process_response(
-                    response=response, config=self.config
-                )
+    def main(self) -> pd.DataFrame:
+        """_summary_
 
-                processed_response["latitude"] = response.Latitude()
-                processed_response["longitude"] = response.Longitude()
+        Returns:
+            pd.DataFrame: _description_
+        """
+        data = self._main(url=OpenMeteoForecastClient.URL)
 
-                data = pd.concat([data, processed_response], axis=0)
+        return data
 
-            data["date"] = pd.to_datetime(
-                data["date"], format="%Y-%m-%d %H:%M:%S"
-            ).dt.strftime("%Y-%m-%d")
 
-            self.logger.info("Writing data to database...")
+class WeeklyTableConstructor:
 
-            orm_objects = self.database.create_orm_objects(
-                data=data, table=DailyWeatherForecast
+    def __trim_data(
+        self, data: pd.DataFrame
+    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        """Trims data to full weeks. Cutoffs are first Monday in the front and last Sunday in the back.
+
+        Args:
+            data (pd.DataFrame): Daily data to trim.
+
+        Returns:
+            Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]: Tuple of trimmed DataFrames. (main, head, tail)
+        """
+        cutoff_front = data[data["date"].dt.weekday == 0]["date"].min()
+        cutoff_back = data[data["date"].dt.weekday == 6]["date"].max()
+
+        data_main = (
+            data[(data["date"] >= cutoff_front) & (data["date"] <= cutoff_back)]
+        ).copy()
+
+        data_head = (data[data["date"] < cutoff_front]).copy()
+
+        data_tail = (data[data["date"] > cutoff_back]).copy()
+
+        return data_main, data_head, data_tail
+
+    def __aggregate_data(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Aggregates data by week and location.
+
+        Args:
+            data (pd.DataFrame): Weekly DataFrame to aggregate.
+
+        Returns:
+            pd.DataFrame: Aggregated DataFrame.
+        """
+        data["week"] = data["date"] + pd.offsets.Week(weekday=6)
+        data["year"] = data["week"].dt.year
+        data = data.drop(columns="date")
+
+        data = (
+            data.groupby(["week", "year", "latitude", "longitude"])
+            .aggregate(
+                {
+                    "temperature_2m_mean": "mean",
+                    "temperature_2m_max": "max",
+                    "temperature_2m_min": "min",
+                    "cloud_cover_mean": "mean",
+                    "cloud_cover_max": "max",
+                    "cloud_cover_min": "min",
+                    "wind_speed_10m_mean": "mean",
+                    "wind_speed_10m_min": "min",
+                    "wind_speed_10m_max": "max",
+                    "sunshine_duration": "mean",
+                    "precipitation_sum": "sum",
+                    "precipitation_hours": "sum",
+                }
             )
+            .reset_index()
+        )
 
-            self.database.write_data(orm_objects)
-        else:
-            self.logger.info(
-                "Forecast data exists as expected. Skipping data retrieval..."
-            )
+        return data
 
-        self.database.close()
+    def __create_calendar_week(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Creates a calendar week column.
 
-        self.logger.info(f"{self.__class__.__name__} exited successfully.")
+        Args:
+            data (pd.DataFrame): Weekly DataFrame.
+
+        Returns:
+            pd.DataFrame: Resulting DataFrame.
+        """
+        data["week"] = data["week"].dt.isocalendar().week
+
+        return data
+
+    def main(
+        self, daily_data: pd.DataFrame
+    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        """Main routine of WeeklyTableConstructor class. Creates a weekly DataFrame from daily weather data. Returns the result DataFrame as well as cutoff data.
+
+        Args:
+            daily_data (pd.DataFrame): Daily weather data to aggregate.
+
+        Returns:
+            Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]: Tuple of DataFrames. (main, head, tail)
+        """
+        daily_data["date"] = pd.to_datetime(daily_data["date"])
+        data_main, data_head, data_tail = self.__trim_data(data=daily_data)
+        data_main = self.__aggregate_data(data_main)
+        data_main = self.__create_calendar_week(data_main)
+
+        return data_main, data_head, data_tail
