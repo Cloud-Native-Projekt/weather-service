@@ -82,6 +82,29 @@ class WeeklyWeatherForecast(WeatherBase):
 
 
 class DatabaseEngine:
+    """PostgreSQL Database Engine Configuration and Connection Management
+
+    The class automatically constructs database connection URLs using the PostgreSQL
+    dialect with the psycopg2 driver, and retrieves all connection parameters from
+    environment variables for security and configuration management.
+
+    Environment Variables Required:
+    - POSTGRES_USER: Database username for authentication
+    - POSTGRES_PASSWORD: Database password for authentication
+    - POSTGRES_HOST: Database server hostname or IP address
+    - POSTGRES_PORT: Database server port number
+    - POSTGRES_DB: Target database name
+
+    Attributes:
+        __DIALECT (str): Database dialect identifier ("postgresql")
+        __DRIVER (str): Database driver identifier ("psycopg2")
+        __USER (str): Database username from environment
+        __PASSWORD (str): Database password from environment
+        __HOST (str): Database host from environment
+        __PORT (str): Database port from environment
+        __DATABASE (str): Database name from environment
+    """
+
     __DIALECT = "postgresql"
     __DRIVER = "psycopg2"
     __USER = os.getenv("POSTGRES_USER")
@@ -91,6 +114,7 @@ class DatabaseEngine:
     __DATABASE = os.getenv("POSTGRES_DB")
 
     def __init__(self) -> None:
+        """Initialize DatabaseEngine with PostgreSQL connection."""
         self.__engine = create_engine(
             f"{DatabaseEngine.__DIALECT}+{DatabaseEngine.__DRIVER}://{DatabaseEngine.__USER}:{DatabaseEngine.__PASSWORD}@{DatabaseEngine.__HOST}:{DatabaseEngine.__PORT}/{DatabaseEngine.__DATABASE}",
             echo=True,
@@ -98,6 +122,12 @@ class DatabaseEngine:
 
     @property
     def get_engine(self):
+        """SQLAlchemy database engine.
+
+        Returns:
+            sqlalchemy.engine.Engine: Configured SQLAlchemy engine instance
+                ready for database operations.
+        """
         return self.__engine
 
 
