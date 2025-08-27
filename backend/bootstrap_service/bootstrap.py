@@ -21,12 +21,12 @@ if __name__ == "__main__":
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
-    logger = logging.getLogger(name="Init Service")
+    logger = logging.getLogger(name="Bootstrap Service")
 
     database = WeatherDatabase()
 
     if database.bootstrap:
-        logging.info("Starting bootstrap routine...")
+        logger.info("Starting bootstrap routine...")
 
         database.create_tables()
         database.truncate_table(DailyWeatherHistory)
@@ -70,9 +70,9 @@ if __name__ == "__main__":
         database.write_data(history_orm_objects_weekly)
         database.write_data(forecast_orm_objects_weekly)
 
-        logging.info("Bootstrap routine completed successfully!")
+        logger.info("Bootstrap routine completed successfully!")
 
     else:
-        logging.info("Tables already exist. Skipping bootstrap routine...")
+        logger.info("Tables already exist. Skipping bootstrap routine...")
 
     database.close()
