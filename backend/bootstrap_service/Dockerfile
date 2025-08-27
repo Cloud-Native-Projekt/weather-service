@@ -29,4 +29,4 @@ USER appuser
 # Make sure scripts are in PATH
 ENV PATH=/home/appuser/.local/bin:$PATH
 
-CMD ["python", "init.py"]
+CMD ["python", "bootstrap.py"]
