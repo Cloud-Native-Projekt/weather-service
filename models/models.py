@@ -13,6 +13,7 @@ from typing import (
     TypeVar,
     get_type_hints,
 )
+from warnings import deprecated
 
 import pandas as pd
 from sqlalchemy import (
@@ -289,6 +290,9 @@ class WeatherDatabase:
 
         self.DB_SESSION.commit()
 
+    @deprecated(
+        "This method is deprecated in it's current state and will be changed in a future version"
+    )
     def health_check(
         self,
         start_date: date,
@@ -299,6 +303,9 @@ class WeatherDatabase:
 
         return date_range
 
+    @deprecated(
+        "This method is deprecated in it's current state and will be changed in a future version"
+    )
     def __check_date_range(
         self,
         start_date: date,
@@ -321,6 +328,9 @@ class WeatherDatabase:
             )
             return False
 
+    @deprecated(
+        "This method is deprecated in it's current state and will be changed in a future version"
+    )
     def get_missing_dates(self, available_dates, expected_dates):
         missing_dates = [
             datum for datum in expected_dates if datum not in available_dates
