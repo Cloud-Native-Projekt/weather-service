@@ -1,3 +1,88 @@
+"""Weather Service Data Models and Database Management
+
+This module defines the complete data model architecture and database management
+system for the weather service. It provides SQLAlchemy ORM models for weather data
+storage and a comprehensive database interface for weather data operations.
+
+Core Components:
+
+Database Models:
+- WeatherBase: Abstract base class defining common weather measurement schema
+- DailyWeatherHistory: Historical daily weather observations storage
+- DailyWeatherForecast: Daily weather forecast predictions storage
+- WeeklyWeatherHistory: Aggregated weekly historical weather data
+- WeeklyWeatherForecast: Aggregated weekly forecast predictions
+
+Database Management:
+- DatabaseEngine: PostgreSQL connection and engine configuration
+- WeatherDatabase: High-level interface for all database operations
+
+Key Features:
+- Standardized weather measurement schema across all data tables
+- Geographic indexing for spatial weather queries (latitude/longitude)
+- Temporal indexing for efficient date and time-based operations
+- Automatic bootstrap detection to prevent accidental data loss
+- Data conversion utilities for pandas DataFrame to ORM object transformation
+- Weekly data rollover operations for forecast-to-history transitions
+- Comprehensive logging for database operation monitoring
+
+Data Schema:
+All weather tables inherit a common set of meteorological measurements:
+- Temperature metrics (mean, max, min) in Celsius at 2m height
+- Cloud cover percentages (mean, max, min)
+- Wind speed measurements (mean, max, min) in m/s at 10m height
+- Precipitation data (total mm, duration hours)
+- Sunshine duration in seconds
+- Geographic coordinates (latitude, longitude)
+
+Database Configuration:
+The system uses PostgreSQL with psycopg2 adapter and requires the following
+environment variables for connection:
+- POSTGRES_USER: Database username
+- POSTGRES_PASSWORD: Database password
+- POSTGRES_HOST: Database server hostname
+- POSTGRES_PORT: Database server port
+- POSTGRES_DB: Target database name
+
+Usage Patterns:
+
+Bootstrap Operations:
+    db = WeatherDatabase()
+    if db.bootstrap:
+        db.create_tables()
+        # Populate initial data via bootstrap service
+
+Data Operations:
+    # Convert DataFrame to ORM objects
+    objects = db.create_orm_objects(weather_df, DailyWeatherHistory)
+    db.write_data(objects)
+
+    # Query data
+    history = db.get_table(DailyWeatherHistory)
+
+    # Maintenance operations
+    db.truncate_table(DailyWeatherForecast)
+    db.rollover_weekly_data(2024, 15)
+
+Session Management:
+    try:
+        db = WeatherDatabase()
+        # Perform operations
+    finally:
+        db.close()
+
+Dependencies:
+- SQLAlchemy: ORM and database abstraction layer
+- pandas: Data manipulation and DataFrame operations
+- PostgreSQL: Primary database backend with psycopg2 driver
+- Python logging: Operation monitoring and debugging
+
+Note:
+This module is designed to be the single source of truth for all weather data
+models and database operations. All other services (bootstrap, maintenance, API)
+should import and use these models for data consistency.
+"""
+
 import logging
 import os
 from abc import ABC, ABCMeta
@@ -24,6 +109,8 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 
 class CombinedMeta(DeclarativeMeta, ABCMeta):
+    """Combined metaclass for SQLAlchemy declarative base with abstract base class support."""
+
     pass
 
 
@@ -31,6 +118,17 @@ Base = declarative_base(metaclass=CombinedMeta)
 
 
 class WeatherBase(Base, ABC):
+    """Abstract base class for all weather data tables.
+
+    This abstract class defines the common schema and structure shared by all weather
+    data tables in the system. It provides standardized meteorological measurements
+    and geographic positioning that are consistent across daily and weekly, historical
+    and forecast data tables.
+
+    All concrete weather tables inherit from this base class and add their own
+    temporal identification columns (date, year/week) as appropriate.
+    """
+
     __abstract__ = True
 
     idx = Column(Integer, primary_key=True, autoincrement=True)
@@ -51,18 +149,45 @@ class WeatherBase(Base, ABC):
 
 
 class DailyWeatherHistory(WeatherBase):
+    """Historical daily weather observations data table.
+
+    Table Structure:
+    - Inherits all weather measurements from WeatherBase
+    - Adds date column for temporal identification
+    - Geographic indexing on latitude/longitude for spatial queries
+    - Date indexing for efficient temporal range queries
+    """
+
     __tablename__ = "daily_history"
 
     date = Column(Date, index=True, nullable=False)
 
 
 class DailyWeatherForecast(WeatherBase):
+    """Daily weather forecast predictions data table.
+
+    Table Structure:
+    - Inherits all weather measurements from WeatherBase
+    - Adds date column for forecast validity date
+    - Geographic indexing for spatial forecast queries
+    - Date indexing for temporal forecast range selection
+    """
+
     __tablename__ = "daily_forecast"
 
     date = Column(Date, index=True, nullable=False)
 
 
 class WeeklyWeatherHistory(WeatherBase):
+    """Historical weekly aggregated weather data table.
+
+    Table Structure:
+    - Inherits all weather measurements from WeatherBase (as weekly aggregates)
+    - Uses year and week columns for temporal identification
+    - Geographic indexing for spatial analysis across regions
+    - Composite indexing on year/week for efficient temporal queries
+    """
+
     __tablename__ = "weekly_history"
 
     year = Column(Integer, index=True, nullable=False)
@@ -70,6 +195,15 @@ class WeeklyWeatherHistory(WeatherBase):
 
 
 class WeeklyWeatherForecast(WeatherBase):
+    """Weekly aggregated weather forecast predictions data table.
+
+    Table Structure:
+    - Inherits all weather measurements from WeatherBase (as weekly aggregates)
+    - Uses year and week columns for forecast validity period
+    - Source column tracks the origin of forecast data
+    - Check constraint ensures valid source values
+    """
+
     __tablename__ = "weekly_forecast"
 
     year = Column(Integer, index=True, nullable=False)
