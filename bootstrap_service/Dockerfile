@@ -1,4 +1,4 @@
-FROM weather-build-service:latest AS wheels
+FROM weather-build-service:1.0.0 AS wheels
 FROM python:3.13.7-trixie AS builder
 
 WORKDIR /app
@@ -8,7 +8,9 @@ COPY --from=wheels /wheels /wheels
 
 RUN pip install --user --no-cache-dir /wheels/*.whl
 
-FROM python:3.13.7-slim-trixie
+FROM python:3.13.7-slim-trixie AS weather-bootstrap-service
+ARG VERSION=latest
+LABEL version=0.1.0
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \

@@ -1,4 +1,5 @@
-FROM python:3.13.7-trixie AS weather-build-service
+FROM python:3.13.7-trixie AS wheel-builder
+
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
@@ -25,5 +26,7 @@ WORKDIR /app/openmeteo_client
 RUN poetry build
 RUN mv dist/*.whl /wheels/
 
-FROM scratch
-COPY --from=weather-build-service /wheels /wheels
+FROM scratch AS weather-build-service
+ARG VERSION=latest
+LABEL version=1.0.0
+COPY --from=wheel-builder /wheels /wheels
