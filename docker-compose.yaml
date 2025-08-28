@@ -25,6 +25,7 @@ services:
       target: weather-build-service
     container_name: weather-build-service
     image: weather-build-service:${BUILD_SERVICE_VERSION}
+    profiles: [build-only]
 
   bootstrap-service:
     build:
@@ -41,8 +42,6 @@ services:
       POSTGRES_PASSWORD: pw
       CONFIG_FILE: dev_config.json
     depends_on:
-      build-service:
-        condition: service_completed_successfully
       database:
         condition: service_healthy
         restart: true
@@ -62,8 +61,6 @@ services:
       POSTGRES_PASSWORD: pw
       CONFIG_FILE: dev_config.json
     depends_on:
-      build-service:
-        condition: service_completed_successfully
       database:
         condition: service_healthy
         restart: true

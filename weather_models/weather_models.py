@@ -98,6 +98,7 @@ from sqlalchemy import (
     Float,
     Integer,
     String,
+    UniqueConstraint,
     create_engine,
     delete,
     distinct,
@@ -162,6 +163,15 @@ class DailyWeatherHistory(WeatherBase):
 
     date = Column(Date, index=True, nullable=False)
 
+    __table_args__ = (
+        UniqueConstraint(
+            "date",
+            "latitude",
+            "longitude",
+            name="DailyWeatherHistory-entry-unique-constraint",
+        ),
+    )
+
 
 class DailyWeatherForecast(WeatherBase):
     """Daily weather forecast predictions data table.
@@ -176,6 +186,15 @@ class DailyWeatherForecast(WeatherBase):
     __tablename__ = "daily_forecast"
 
     date = Column(Date, index=True, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "date",
+            "latitude",
+            "longitude",
+            name="DailyWeatherForecast-entry-unique-constraint",
+        ),
+    )
 
 
 class WeeklyWeatherHistory(WeatherBase):
