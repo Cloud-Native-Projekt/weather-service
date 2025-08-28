@@ -1570,4 +1570,6 @@ class WeeklyTableConstructor:
         data_main = self.__aggregate_data(data_main)
         data_main = self.__create_calendar_week(data_main)
 
+        data_main = data_main.drop_duplicates()
+
         return data_main, data_head, data_tail

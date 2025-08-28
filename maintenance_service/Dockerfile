@@ -7,7 +7,7 @@ WORKDIR /app
 COPY --from=wheels /wheels /wheels
 
 RUN pip install --user --no-cache-dir /wheels/weather_models-0.1.1-py3-none-any.whl
-RUN pip install --user --no-cache-dir /wheels/openmeteo_client-0.1.1-py3-none-any.whl
+RUN pip install --user --no-cache-dir /wheels/openmeteo_client-0.1.2-py3-none-any.whl
 
 
 FROM python:3.13.7-slim-trixie AS weather-maintenance-service
