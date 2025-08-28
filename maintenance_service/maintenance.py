@@ -38,6 +38,8 @@ Note:
 import logging
 from datetime import date, timedelta
 
+from psycopg2.errors import UniqueViolation
+
 from openmeteo_client import (
     OpenMeteoArchiveClient,
     OpenMeteoClientConfig,
@@ -80,6 +82,11 @@ if __name__ == "__main__":
             data=historic_data_daily, table=DailyWeatherHistory
         )
 
+        try:
+            database.write_data(history_orm_objects_daily)
+        except UniqueViolation as e:
+            logger.error(e)
+
         database.truncate_table(DailyWeatherForecast)
 
         ForecastClient = OpenMeteoForecastClient(config)
@@ -88,8 +95,10 @@ if __name__ == "__main__":
             data=forecast_data_daily, table=DailyWeatherForecast
         )
 
-        database.write_data(history_orm_objects_daily)
-        database.write_data(forecast_orm_objects_daily)
+        try:
+            database.write_data(forecast_orm_objects_daily)
+        except UniqueViolation as e:
+            logger.error(e)
 
         logger.info("Daily maintenance routine completed successfully!")
 
@@ -101,7 +110,10 @@ if __name__ == "__main__":
 
             logger.info(f"Rollover week is: {rollover_week}-{rollover_year}")
 
-            database.rollover_weekly_data(rollover_year, rollover_week)
+            try:
+                database.rollover_weekly_data(rollover_year, rollover_week)
+            except UniqueViolation as e:
+                logger.error(e)
 
             forecast_data_weekly, _, _ = WeeklyTableConstructor().main(
                 forecast_data_daily
@@ -111,7 +123,10 @@ if __name__ == "__main__":
                 data=forecast_data_weekly, table=WeeklyWeatherForecast
             )
 
-            database.write_data(forecast_orm_objects_weekly)
+            try:
+                database.write_data(forecast_orm_objects_weekly)
+            except UniqueViolation as e:
+                logger.error(e)
 
             logger.info("Weekly maintenance routine completed successfully!")
         else:
