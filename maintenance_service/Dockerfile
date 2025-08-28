@@ -6,7 +6,7 @@ WORKDIR /app
 # Copy pre-built wheels
 COPY --from=wheels /wheels /wheels
 
-RUN pip install --user --no-cache-dir /wheels/weather_models-0.1.2-py3-none-any.whl
+RUN pip install --user --no-cache-dir /wheels/weather_models-0.2.0-py3-none-any.whl
 RUN pip install --user --no-cache-dir /wheels/openmeteo_client-0.1.2-py3-none-any.whl
 
 

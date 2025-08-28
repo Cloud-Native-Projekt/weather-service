@@ -82,10 +82,7 @@ if __name__ == "__main__":
             data=historic_data_daily, table=DailyWeatherHistory
         )
 
-        try:
-            database.write_data(history_orm_objects_daily)
-        except UniqueViolation as e:
-            logger.error(e)
+        database.write_data(history_orm_objects_daily)
 
         database.truncate_table(DailyWeatherForecast)
 
@@ -95,10 +92,7 @@ if __name__ == "__main__":
             data=forecast_data_daily, table=DailyWeatherForecast
         )
 
-        try:
-            database.write_data(forecast_orm_objects_daily)
-        except UniqueViolation as e:
-            logger.error(e)
+        database.write_data(forecast_orm_objects_daily)
 
         logger.info("Daily maintenance routine completed successfully!")
 
@@ -129,10 +123,7 @@ if __name__ == "__main__":
                     data=historic_data_daily, table=DailyWeatherHistory
                 )
 
-                try:
-                    database.write_data(history_orm_objects_daily)
-                except UniqueViolation as e:
-                    logger.error(e)
+                database.write_data(history_orm_objects_daily)
 
         else:
             logger.info("Daily health check passed successfully!")
@@ -145,10 +136,7 @@ if __name__ == "__main__":
 
             logger.info(f"Rollover week is: {rollover_week}-{rollover_year}")
 
-            try:
-                database.rollover_weekly_data(rollover_year, rollover_week)
-            except UniqueViolation as e:
-                logger.error(e)
+            database.rollover_weekly_data(rollover_year, rollover_week)
 
             forecast_data_weekly, _, _ = WeeklyTableConstructor().main(
                 forecast_data_daily
@@ -158,10 +146,7 @@ if __name__ == "__main__":
                 data=forecast_data_weekly, table=WeeklyWeatherForecast
             )
 
-            try:
-                database.write_data(forecast_orm_objects_weekly)
-            except UniqueViolation as e:
-                logger.error(e)
+            database.write_data(forecast_orm_objects_weekly)
 
             logger.info("Weekly maintenance routine completed successfully!")
         else:
@@ -169,6 +154,6 @@ if __name__ == "__main__":
 
         logger.info("Maintenance routine completed successfully!")
     except Exception as e:
-        logger.error(e)
+        logger.error(f"{e}")
     finally:
         database.close()

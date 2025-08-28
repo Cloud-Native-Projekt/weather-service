@@ -459,8 +459,12 @@ class WeatherDatabase:
             raise TypeError(
                 f"Data does not match expected type. Expected: {get_type_hints(self.write_data).get("orm_objects")} Got {type(orm_objects)} instead."
             )
-
-        self.DB_SESSION.commit()
+        try:
+            self.DB_SESSION.commit()
+        except Exception as e:
+            self.logger.error(f"Error during writing data: {e}")
+            self.logger.info("Rolling back transaction...")
+            self.DB_SESSION.rollback()
 
     def health_check(
         self,
