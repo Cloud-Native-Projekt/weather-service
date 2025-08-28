@@ -52,7 +52,7 @@ services:
       context: .
       dockerfile: maintenance_service/Dockerfile
     container_name: weather-maintenance-service
-    image: weather-maintenance-service:0.1.0
+    image: weather-maintenance-service:0.1.1
     restart: no
     environment:
       POSTGRES_HOST: database

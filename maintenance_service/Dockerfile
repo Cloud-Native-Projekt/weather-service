@@ -11,7 +11,7 @@ RUN pip install --user --no-cache-dir /wheels/*.whl
 
 FROM python:3.13.7-slim-trixie AS weather-maintenance-service
 ARG VERSION=latest
-LABEL version=0.1.0
+LABEL version=0.1.1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
