@@ -999,6 +999,8 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
             data["date"], format="%Y-%m-%d %H:%M:%S"
         ).dt.strftime("%Y-%m-%d")
 
+        data = data.drop_duplicates()
+
         self.logger.info(f"{self.__class__.__name__} exited successfully.")
 
         return data
