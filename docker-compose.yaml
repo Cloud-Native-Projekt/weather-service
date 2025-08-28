@@ -31,7 +31,7 @@ services:
       context: .
       dockerfile: bootstrap_service/Dockerfile
     container_name: weather-bootstrap-service
-    image: weather-bootstrap-service:0.1.0
+    image: weather-bootstrap-service:0.1.1
     restart: no
     environment:
       POSTGRES_HOST: database
