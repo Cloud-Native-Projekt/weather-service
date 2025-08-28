@@ -102,6 +102,41 @@ if __name__ == "__main__":
 
         logger.info("Daily maintenance routine completed successfully!")
 
+        logger.info("Performing daily health check...")
+
+        health_check_config = OpenMeteoClientConfig(create_from_file=True)
+
+        if not database.health_check(
+            start_date=health_check_config.history_start_date,
+            end_date=health_check_config.history_end_date,
+            table=DailyWeatherHistory,
+        ):
+            missing_dates = database.get_missing_dates(
+                start_date=health_check_config.history_start_date,
+                end_date=health_check_config.history_end_date,
+                table=DailyWeatherHistory,
+            )
+
+            for datum in missing_dates:
+                temp_config = OpenMeteoClientConfig(
+                    create_from_file=True,
+                    kwargs={"history_start_date": datum, "history_end_date": datum},
+                )
+
+                ArchiveClient = OpenMeteoArchiveClient(temp_config)
+                historic_data_daily = ArchiveClient.main()
+                history_orm_objects_daily = database.create_orm_objects(
+                    data=historic_data_daily, table=DailyWeatherHistory
+                )
+
+                try:
+                    database.write_data(history_orm_objects_daily)
+                except UniqueViolation as e:
+                    logger.error(e)
+
+        else:
+            logger.info("Daily health check passed successfully!")
+
         if TODAY.weekday() == 0:
             logger.info("Starting weekly maintenance job...")
 

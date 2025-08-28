@@ -1,6 +1,6 @@
 [project]
 name = "weather_models"
-version = "0.1.1"
+version = "0.1.2"
 description = ""
 authors = [{ name = "Jonas Werner", email = "werner-jonas@outlook.com" }]
 readme = "README.md"

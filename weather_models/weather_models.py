@@ -462,29 +462,54 @@ class WeatherDatabase:
 
         self.DB_SESSION.commit()
 
-    @deprecated(
-        "This method is deprecated in it's current state and will be changed in a future version"
-    )
     def health_check(
         self,
         start_date: date,
         end_date: date,
-        table: Type[DailyWeatherHistory] | Type[DailyWeatherForecast],
+        table: Type[DailyWeatherHistory],
     ) -> bool:
+        """Check if all expected dates exist in the specified daily weather table.
+
+        Validates data completeness by verifying that all dates within the specified
+        range are present in the database table. This is useful for ensuring data
+        integrity before performing operations that depend on continuous date ranges.
+
+        Args:
+            start_date (date): The beginning date of the range to check (inclusive).
+            end_date (date): The ending date of the range to check (inclusive).
+            table (Type[DailyWeatherHistory]: The DailyWeatherHistory table class to check.
+
+        Returns:
+            bool: True if all dates in the range exist in the table, False if any
+                dates are missing.
+        """
         date_range = self.__check_date_range(start_date, end_date, table)
 
         return date_range
 
-    @deprecated(
-        "This method is deprecated in it's current state and will be changed in a future version"
-    )
     def __check_date_range(
         self,
         start_date: date,
         end_date: date,
-        table: Type[DailyWeatherHistory] | Type[DailyWeatherForecast],
-    ):
-        available_dates = self.DB_SESSION.scalars(select(distinct(table.date))).all()
+        table: Type[DailyWeatherHistory],
+    ) -> bool:
+        """Internal method to verify date range completeness in DailyWeatherHistory.
+
+        Compares the expected date range against the actual dates present in the
+        database table. Logs the results of the comparison for monitoring and
+        debugging purposes.
+
+        Args:
+            start_date (date): The beginning date of the expected range (inclusive).
+            end_date (date): The ending date of the expected range (inclusive).
+            table (Type[DailyWeatherHistory]: The DailyWeatherHistory class to examine.
+
+        Returns:
+            bool: True if all expected dates are present in the table, False if any
+                dates are missing. Also logs informational messages about the
+                comparison results.
+        """
+        available_dates = self.get_date_range(table)
 
         expected_dates = {
             start_date + timedelta(days=i)
@@ -500,15 +525,60 @@ class WeatherDatabase:
             )
             return False
 
-    @deprecated(
-        "This method is deprecated in it's current state and will be changed in a future version"
-    )
-    def get_missing_dates(self, available_dates, expected_dates):
+    def get_missing_dates(
+        self,
+        start_date: date,
+        end_date: date,
+        table: Type[DailyWeatherHistory],
+    ):
+        """Identify missing dates within a specified range in DailyWeatherHistory.
+
+        Compares the expected date range against the actual dates present in the
+        database and returns a list of dates that are missing. This is useful for
+        identifying data gaps that need to be filled.
+
+        Args:
+            start_date (date): The beginning date of the range to check (inclusive).
+            end_date (date): The ending date of the range to check (inclusive).
+            table (Type[DailyWeatherHistory]: The DailyWeatherHistory class to examine.
+
+        Returns:
+            List[date]: List of date objects representing the missing dates within
+                the specified range. Returns empty list if all dates are present.
+        """
+        available_dates = self.get_date_range(table)
+
+        expected_dates = {
+            start_date + timedelta(days=i)
+            for i in range((end_date - start_date).days + 1)
+        }
+
         missing_dates = [
             datum for datum in expected_dates if datum not in available_dates
         ]
 
         return missing_dates
+
+    def get_date_range(
+        self, table: Type[DailyWeatherHistory] | Type[DailyWeatherForecast]
+    ) -> Sequence[date]:
+        """Retrieve all unique dates present in a daily weather table.
+
+        Queries the database to get a distinct list of all dates that have weather
+        data in the specified table. This is useful for understanding the temporal
+        coverage of the dataset and identifying available data periods.
+
+        Args:
+            table (Type[DailyWeatherHistory] | Type[DailyWeatherForecast]): The daily
+                weather table class to query. Must be either DailyWeatherHistory or
+                DailyWeatherForecast.
+
+        Returns:
+            Sequence[date]: Sequence of unique date objects representing all dates
+                that have weather data in the table. Returns empty sequence if the
+                table contains no data.
+        """
+        return self.DB_SESSION.scalars(select(distinct(table.date))).all()
 
     def truncate_table(self, table: Type[WeatherTable]) -> None:
         """Truncates a specified weather table.
