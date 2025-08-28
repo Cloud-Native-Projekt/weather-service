@@ -1,7 +1,7 @@
 services:
   database:
     image: postgres:16-alpine
-    container_name: postgres
+    container_name: weather-db
     restart: always
     environment:
       POSTGRES_DB: weatherdb
@@ -18,42 +18,54 @@ services:
       timeout: 5s
       retries: 3
 
-  bootstrap_service:
+  build-service:
+    build:
+      context: .
+      dockerfile: build_service/Dockerfile
+      target: weather-build-service
+    container_name: weather-build-service
+    image: weather-build-service
+
+  bootstrap-service:
     build:
       context: .
       dockerfile: bootstrap_service/Dockerfile
-    container_name: weather_bootstrap_service
+    container_name: weather-bootstrap-service
     restart: no
     environment:
-      POSTGRES_HOST: postgres
+      POSTGRES_HOST: database
       POSTGRES_PORT: 5432
       POSTGRES_DB: weatherdb
       POSTGRES_USER: myuser
       POSTGRES_PASSWORD: pw
       CONFIG_FILE: dev_config.json
     depends_on:
+      build-service:
+        condition: service_completed_successfully
       database:
         condition: service_healthy
         restart: true
 
-  maintenance_service:
+  maintenance-service:
     build:
       context: .
       dockerfile: maintenance_service/Dockerfile
-    container_name: weather_maintenance_service
+    container_name: weather-maintenance-service
     restart: no
     environment:
-      POSTGRES_HOST: postgres
+      POSTGRES_HOST: database
       POSTGRES_PORT: 5432
       POSTGRES_DB: weatherdb
       POSTGRES_USER: myuser
       POSTGRES_PASSWORD: pw
       CONFIG_FILE: dev_config.json
     depends_on:
+      build-service:
+        condition: service_completed_successfully
       database:
         condition: service_healthy
         restart: true
-      bootstrap_service:
+      bootstrap-service:
         condition: service_completed_successfully
 
 volumes:
