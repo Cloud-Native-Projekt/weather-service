@@ -88,9 +88,10 @@ import os
 from abc import ABC, ABCMeta
 from datetime import date, timedelta
 from typing import Any, Dict, Iterable, List, Sequence, Type, TypeVar, get_type_hints
-from warnings import deprecated
 
+import numpy as np
 import pandas as pd
+from numpy.typing import NDArray
 from sqlalchemy import (
     CheckConstraint,
     Column,
@@ -696,6 +697,34 @@ class WeatherDatabase:
         self.logger.info("Closing Database Session...")
         self.DB_SESSION.close()
 
+    def get_locations(self, table: Type[WeatherTable]) -> NDArray:
+        """Retrieve all unique geographic coordinate pairs from a weather table.
+
+        Queries the database to extract all distinct latitude and longitude values
+        from the specified weather table, then generates a meshgrid of all possible
+        coordinate combinations.
+
+        Args:
+            table (Type[WeatherTable]): Weather table class to query. Must be a class
+                that inherits from WeatherBase and contains latitude/longitude columns.
+
+        Returns:
+            NDArray: 2D NumPy array with shape (n_locations, 2) where each row contains
+                [latitude, longitude] coordinates. The array contains all possible
+                combinations of unique latitude and longitude values found in the table.
+                Returns empty array if table contains no data.
+        """
+        latitude_range = self.DB_SESSION.scalars(select(distinct(table.latitude))).all()
+        longitude_range = self.DB_SESSION.scalars(
+            select(distinct(table.longitude))
+        ).all()
+
+        lat_grid, lon_grid = np.meshgrid(latitude_range, longitude_range, indexing="ij")
+
+        locations = np.column_stack([lat_grid.ravel(), lon_grid.ravel()])
+
+        return locations
+
     @property
     def bootstrap(self) -> bool:
         """Determine if database bootstrap initialization is required.
@@ -709,3 +738,14 @@ class WeatherDatabase:
                 False if database is properly initialized with data.
         """
         return self.__bootstrap()
+
+
+class WeeklyForecastModel:
+    def __init__(self) -> None:
+        self.__database = WeatherDatabase()
+
+    def calculate_moving_average(self):
+        pass
+
+    def main(self):
+        pass
