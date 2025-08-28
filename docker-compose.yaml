@@ -21,7 +21,7 @@ services:
   bootstrap_service:
     build:
       context: .
-      dockerfile: backend/bootstrap_service/Dockerfile
+      dockerfile: bootstrap_service/Dockerfile
     container_name: weather_bootstrap_service
     restart: no
     environment:
@@ -39,7 +39,7 @@ services:
   maintenance_service:
     build:
       context: .
-      dockerfile: backend/maintenance_service/Dockerfile
+      dockerfile: maintenance_service/Dockerfile
     container_name: weather_maintenance_service
     restart: no
     environment:

@@ -44,8 +44,7 @@ from openmeteo_client import (
     OpenMeteoForecastClient,
     WeeklyTableConstructor,
 )
-
-from models import (
+from weather_models import (
     DailyWeatherForecast,
     DailyWeatherHistory,
     WeatherDatabase,

@@ -278,7 +278,7 @@ class OpenMeteoClientConfig:
             create_from_file (bool): Whether to load base configuration from file.
                 When True, attempts to load from config_file or default location.
             config_file (str | None): Path to JSON configuration file. If None and
-                create_from_file=True, uses default path: {parent_dir}/{CONFIG_FILE env var or config.json}
+                create_from_file=True, uses default path: {cwd}/{CONFIG_FILE env var or config.json}
             kwargs (Dict[str, Any] | None): Direct parameter values or overrides.
                 Required when create_from_file=False. Can supplement file configuration.
 
@@ -302,7 +302,9 @@ class OpenMeteoClientConfig:
         if create_from_file:
             if not config_file:
                 config_file = os.path.join(
-                    os.path.dirname(__file__), os.getenv("CONFIG_FILE", "config.json")
+                    os.getcwd(),
+                    "config",
+                    os.getenv("CONFIG_FILE", "config.json"),
                 )
 
             config = self.__get_config(config_file)
@@ -684,7 +686,7 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
     """
 
     SESSION = retry(
-        requests_cache.CachedSession(".cache", expire_after=86399),
+        requests_cache.CachedSession("/tmp/.cache", expire_after=86399),
         retries=10,
         backoff_factor=2,
     )

@@ -48,14 +48,14 @@ Note:
 import logging
 
 import pandas as pd
+
 from openmeteo_client import (
     OpenMeteoArchiveClient,
     OpenMeteoClientConfig,
     OpenMeteoForecastClient,
     WeeklyTableConstructor,
 )
-
-from models import (
+from weather_models import (
     DailyWeatherForecast,
     DailyWeatherHistory,
     WeatherDatabase,

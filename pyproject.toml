@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "weather_service"
+version = "0.1.0"
+description = "For local development"
+authors = ["Jonas Werner <werner-jonas@outlook.com>"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = ">=3.13"
+openmeteo_client = { path = "openmeteo_client", develop = true }
+weather_models = { path = "weather_models", develop = true }
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
