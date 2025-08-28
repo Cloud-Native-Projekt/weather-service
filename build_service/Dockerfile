@@ -27,6 +27,4 @@ RUN poetry build
 RUN mv dist/*.whl /wheels/
 
 FROM scratch AS weather-build-service
-ARG VERSION=latest
-LABEL version=1.0.0
 COPY --from=wheel-builder /wheels /wheels

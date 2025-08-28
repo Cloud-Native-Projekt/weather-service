@@ -9,8 +9,6 @@ COPY --from=wheels /wheels /wheels
 RUN pip install --user --no-cache-dir /wheels/*.whl
 
 FROM python:3.13.7-slim-trixie AS weather-bootstrap-service
-ARG VERSION=latest
-LABEL version=0.1.1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
