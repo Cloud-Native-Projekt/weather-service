@@ -24,14 +24,14 @@ services:
       dockerfile: build_service/Dockerfile
       target: weather-build-service
     container_name: weather-build-service
-    image: weather-build-service:1.0.0
+    image: weather-build-service:${BUILD_SERVICE_VERSION}
 
   bootstrap-service:
     build:
       context: .
       dockerfile: bootstrap_service/Dockerfile
     container_name: weather-bootstrap-service
-    image: weather-bootstrap-service:0.1.1
+    image: weather-bootstrap-service:${BOOTSTRAP_SERVICE_VERSION}
     restart: no
     environment:
       POSTGRES_HOST: database
@@ -52,7 +52,7 @@ services:
       context: .
       dockerfile: maintenance_service/Dockerfile
     container_name: weather-maintenance-service
-    image: weather-maintenance-service:0.1.1
+    image: weather-maintenance-service:${MAINTENANCE_SERVICE_VERSION}
     restart: no
     environment:
       POSTGRES_HOST: database
