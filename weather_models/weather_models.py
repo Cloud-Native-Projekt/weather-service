@@ -900,8 +900,6 @@ class WeeklyForecastModel:
     def build_model(self, data: pd.DataFrame) -> None:
         self.logger.info("Building time-series model...")
 
-        # warnings.filterwarnings("ignore", category=UserWarning, module="statsmodels")
-
         data = self.__build_dataset(data)
 
         model = VAR(data, freq=None)
