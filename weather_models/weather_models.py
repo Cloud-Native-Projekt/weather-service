@@ -85,10 +85,22 @@ should import and use these models for data consistency.
 
 import logging
 import os
+import warnings
 from abc import ABC, ABCMeta
 from datetime import date, timedelta
-from typing import Any, Dict, Iterable, List, Sequence, Type, TypeVar, get_type_hints
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    List,
+    Sequence,
+    Tuple,
+    Type,
+    TypeVar,
+    get_type_hints,
+)
 
+import joblib
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
@@ -108,6 +120,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.orm import declarative_base, sessionmaker
+from statsmodels.tsa.api import VAR
+from statsmodels.tsa.vector_ar.var_model import VARResults, VARResultsWrapper
 
 
 class CombinedMeta(DeclarativeMeta, ABCMeta):
@@ -231,7 +245,10 @@ class WeeklyWeatherForecast(WeatherBase):
     source = Column(String(length=32), nullable=False)
 
     __table_args__ = (
-        CheckConstraint("source IN ('Open Meteo', 'Placeholder')", name="check_source"),
+        CheckConstraint(
+            "source IN ('OpenMeteo', 'WeeklyForecastModel')",
+            name="WeeklyWeatherForecast-check_source",
+        ),
     )
 
 
@@ -714,16 +731,102 @@ class WeatherDatabase:
                 combinations of unique latitude and longitude values found in the table.
                 Returns empty array if table contains no data.
         """
-        latitude_range = self.DB_SESSION.scalars(select(distinct(table.latitude))).all()
-        longitude_range = self.DB_SESSION.scalars(
-            select(distinct(table.longitude))
+        locations = self.DB_SESSION.execute(
+            select(table.latitude, table.longitude).distinct()
         ).all()
 
-        lat_grid, lon_grid = np.meshgrid(latitude_range, longitude_range, indexing="ij")
-
-        locations = np.column_stack([lat_grid.ravel(), lon_grid.ravel()])
+        locations = np.array(locations)
 
         return locations
+
+    def get_data_by_location(
+        self, table: Type[WeatherTable], location: Tuple[float, float]
+    ) -> Sequence[WeatherTable]:
+        """Retrieve all weather records for a specific geographic location.
+
+        Queries the specified weather table to find all records that match the exact
+        latitude and longitude coordinates provided.
+
+        Args:
+            table (Type[WeatherTable]): Weather table class to query. Must be a class
+                that inherits from WeatherBase (e.g., DailyWeatherHistory,
+                DailyWeatherForecast, WeeklyWeatherHistory, WeeklyWeatherForecast).
+            location (Tuple[float, float]): Geographic coordinates as (latitude, longitude)
+                tuple. Values should match exactly with stored coordinates in the database.
+
+        Returns:
+            Sequence[WeatherTable]: Sequence of ORM objects containing all weather
+                records for the specified location. Returns empty sequence if no
+                records exist for the given coordinates.
+        """
+        lat, lon = float(location[0]), float(location[1])
+
+        data = self.DB_SESSION.scalars(
+            select(table).where((table.latitude == lat) & (table.longitude == lon))
+        ).all()
+
+        return data
+
+    def get_data_by_date_range(
+        self,
+        table: Type[DailyWeatherForecast] | Type[DailyWeatherHistory],
+        start_date: date,
+        end_date: date,
+    ) -> Sequence[DailyWeatherHistory | DailyWeatherForecast]:
+        """Retrieve weather records within a specified date range from daily tables.
+
+        Queries the specified daily weather table to find all records with dates
+        falling within the inclusive date range from start_date to end_date.
+
+        Args:
+            table (DailyWeatherForecast | DailyWeatherHistory): Daily weather table class
+                to query. Must be either DailyWeatherHistory for historical data or
+                DailyWeatherForecast for forecast data.
+            start_date (date): Beginning date of the range to query (inclusive).
+            end_date (date): Ending date of the range to query (inclusive).
+
+        Returns:
+            Sequence[DailyWeatherHistory | DailyWeatherForecast]: Sequence of ORM objects
+                containing all weather records within the specified date range. Returns
+                empty sequence if no records exist for the given date range.
+        """
+        dates = {
+            start_date + timedelta(days=i)
+            for i in range((end_date - start_date).days + 1)
+        }
+        data = self.DB_SESSION.scalars(select(table).where(table.date.in_(dates))).all()
+
+        return data
+
+    def to_dataframe(self, data: Sequence[WeatherTable]) -> pd.DataFrame:
+        """Convert SQLAlchemy ORM objects to pandas DataFrame.
+
+        Transforms a sequence of ORM objects into a pandas DataFrame for data analysis
+        and manipulation. Each ORM object becomes a row in the DataFrame, with column
+        names matching the ORM object attributes.
+
+        Args:
+            data (Sequence[WeatherTable]): Sequence of ORM objects to convert.
+                Must be objects that inherit from WeatherBase.
+
+        Returns:
+            pd.DataFrame: DataFrame with ORM object attributes as columns and each
+                object as a row. Returns empty DataFrame if data sequence is empty.
+        """
+        if not data:
+            return pd.DataFrame()
+        else:
+            dataframe = pd.DataFrame(
+                [
+                    {
+                        column.name: getattr(obj, column.name)
+                        for column in obj.__table__.columns
+                    }
+                    for obj in data
+                ]
+            )
+
+        return dataframe
 
     @property
     def bootstrap(self) -> bool:
@@ -740,12 +843,141 @@ class WeatherDatabase:
         return self.__bootstrap()
 
 
+WeeklyForecastModelType = TypeVar(
+    "WeeklyForecastModelType", bound="WeeklyForecastModel"
+)
+
+
 class WeeklyForecastModel:
-    def __init__(self) -> None:
-        self.__database = WeatherDatabase()
+    def __init__(self, location: Tuple[float, float]) -> None:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s - %(levelname)s - %(message)s",
+        )
+        self.logger = logging.getLogger(name=self.__class__.__name__)
+        self.location = location
+        self.model: VARResults | VARResultsWrapper | None = None
 
-    def calculate_moving_average(self):
-        pass
+    def __add_datetime_index(self, data: pd.DataFrame) -> pd.DataFrame:
+        if "year" in data.columns and "week" in data.columns:
+            dt_index = pd.to_datetime(
+                data["year"].astype(str) + "-W" + data["week"].astype(str) + "-1",
+                format="%G-W%V-%u",
+            )
+            data = data.set_index(dt_index)
+            data = data.sort_index()
+            data.index = pd.DatetimeIndex(data=data.index, freq=None)
+        else:
+            raise ValueError("Data must contain 'year' and 'week' columns.")
 
-    def main(self):
-        pass
+        return data
+
+    def __build_dataset(self, data: pd.DataFrame) -> pd.DataFrame:
+        self.logger.info("Building time-series dataset...")
+
+        data = self.__add_datetime_index(data)
+
+        data = data.drop(
+            columns=["year", "week", "idx", "latitude", "longitude", "source"],
+            errors="ignore",
+        )
+
+        ts_data = data.diff().dropna()
+
+        return ts_data
+
+    def __compute_max_lags(self, data: pd.DataFrame) -> int:
+        n_obs = len(data)
+        n_vars = len(data.columns)
+
+        max_feasible_lags = min(
+            156,
+            max(1, int((n_obs - 20) / (n_vars**2 + n_vars))),
+        )
+
+        return max_feasible_lags
+
+    def build_model(self, data: pd.DataFrame) -> None:
+        self.logger.info("Building time-series model...")
+
+        # warnings.filterwarnings("ignore", category=UserWarning, module="statsmodels")
+
+        data = self.__build_dataset(data)
+
+        model = VAR(data, freq=None)
+
+        max_feasible_lags = self.__compute_max_lags(data)
+
+        var_results = model.fit(
+            maxlags=max_feasible_lags, method="ols", ic="bic", verbose=False, trend="c"
+        )
+
+        self.model = var_results
+
+        self.logger.info("Build success!")
+
+    def forecast(self, horizon: int, data: pd.DataFrame) -> pd.DataFrame:
+        self.logger.info(f"Forecasting the next {horizon} weeks...")
+
+        if self.model is None:
+            raise ValueError("Model has not been built. Call build_model() first.")
+
+        ts_data = self.__build_dataset(data.copy())
+
+        p = self.model.k_ar
+
+        forecast = self.model.forecast(y=ts_data.values[-p:], steps=horizon)
+
+        self.logger.info("Building dataset...")
+
+        forecast = forecast.cumsum(axis=0) + ts_data.iloc[-1].values
+
+        forecast = pd.DataFrame(forecast, columns=ts_data.columns)
+
+        last_date: date = ts_data.index[-1]
+        forecast_dates = pd.date_range(
+            start=last_date + pd.Timedelta(weeks=1), periods=horizon, freq="W-MON"
+        )
+        forecast = forecast.set_index(forecast_dates)
+
+        forecast["latitude"] = self.location[0]
+        forecast["longitude"] = self.location[1]
+        forecast["source"] = "WeeklyForecastModel"
+        forecast["year"] = pd.Series(forecast.index).dt.isocalendar().year.values
+        forecast["week"] = pd.Series(forecast.index).dt.isocalendar().week.values
+        forecast = forecast.reset_index(drop=True)
+
+        return forecast
+
+    def save(self, directory: str, file_name: str | None = None) -> str:
+        if not file_name:
+            file_name = (
+                f"{self.__class__.__name__}_{self.location[0]}_{self.location[1]}.pkl"
+            )
+
+        path = os.path.join(directory, file_name)
+
+        joblib.dump(self, path)
+
+        return path
+
+    @classmethod
+    def from_file(
+        cls: Type[WeeklyForecastModelType],
+        directory: str,
+        file_name: str | None = None,
+        location: Tuple[float, float] | None = None,
+    ) -> WeeklyForecastModelType:
+        if file_name:
+            path = os.path.join(directory, file_name)
+        elif location:
+            path = os.path.join(
+                directory,
+                f"{cls.__class__.__name__}_{location[0]}_{location[1]}.pkl",
+            )
+        else:
+            raise ValueError(
+                "Either file_name or location must be provided to construct path."
+            )
+
+        return joblib.load(path)

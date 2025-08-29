@@ -103,22 +103,9 @@ if __name__ == "__main__":
                 data=historic_data_weekly, table=WeeklyWeatherHistory
             )
 
-            forecast_data_weekly, _, _ = WeeklyTableConstructor().main(
-                pd.concat(
-                    [historic_data_daily_tail, forecast_data_daily],
-                    axis=0,
-                    join="outer",
-                )
-            )
-            forecast_data_weekly["source"] = "Open Meteo"
-            forecast_orm_objects_weekly = database.create_orm_objects(
-                data=forecast_data_weekly, table=WeeklyWeatherForecast
-            )
-
             database.write_data(history_orm_objects_daily)
             database.write_data(forecast_orm_objects_daily)
             database.write_data(history_orm_objects_weekly)
-            database.write_data(forecast_orm_objects_weekly)
 
             logger.info("Bootstrap routine completed successfully!")
 

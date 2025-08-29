@@ -38,8 +38,6 @@ Note:
 import logging
 from datetime import date, timedelta
 
-from psycopg2.errors import UniqueViolation
-
 from openmeteo_client import (
     OpenMeteoArchiveClient,
     OpenMeteoClientConfig,
@@ -50,7 +48,7 @@ from weather_models import (
     DailyWeatherForecast,
     DailyWeatherHistory,
     WeatherDatabase,
-    WeeklyWeatherForecast,
+    WeeklyWeatherHistory,
 )
 
 if __name__ == "__main__":
@@ -128,25 +126,28 @@ if __name__ == "__main__":
         else:
             logger.info("Daily health check passed successfully!")
 
-        if TODAY.weekday() == 0:
+        if TODAY.weekday() == 2:
             logger.info("Starting weekly maintenance job...")
 
-            rollover_year = (TODAY - timedelta(days=1)).year
-            rollover_week = (TODAY - timedelta(days=1)).isocalendar().week
+            start_date = TODAY - timedelta(days=TODAY.weekday()) - timedelta(days=7)
+            end_date = TODAY - timedelta(days=TODAY.weekday()) - timedelta(days=1)
 
-            logger.info(f"Rollover week is: {rollover_week}-{rollover_year}")
-
-            database.rollover_weekly_data(rollover_year, rollover_week)
-
-            forecast_data_weekly, _, _ = WeeklyTableConstructor().main(
-                forecast_data_daily
-            )
-            forecast_data_weekly["source"] = "Open Meteo"
-            forecast_orm_objects_weekly = database.create_orm_objects(
-                data=forecast_data_weekly, table=WeeklyWeatherForecast
+            historic_data_daily_last_week = database.get_data_by_date_range(
+                table=DailyWeatherHistory, start_date=start_date, end_date=end_date
             )
 
-            database.write_data(forecast_orm_objects_weekly)
+            historic_data_daily_last_week = database.to_dataframe(
+                historic_data_daily_last_week
+            )
+
+            historic_data_weekly, _, _ = WeeklyTableConstructor().main(
+                historic_data_daily_last_week
+            )
+            history_orm_objects_weekly = database.create_orm_objects(
+                data=historic_data_weekly, table=WeeklyWeatherHistory
+            )
+
+            database.write_data(history_orm_objects_weekly)
 
             logger.info("Weekly maintenance routine completed successfully!")
         else:
