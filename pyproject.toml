@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "weather_service"
 version = "0.1.0"
-description = "For local development"
+description = "For local development only"
 authors = ["Jonas Werner <werner-jonas@outlook.com>"]
 readme = "README.md"
 package-mode = false
