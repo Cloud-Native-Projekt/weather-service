@@ -906,6 +906,8 @@ class WeeklyForecastModel:
 
         max_feasible_lags = self.__compute_max_lags(data)
 
+        self.logger.info(f"Using max. lags: {max_feasible_lags}...")
+
         var_results = model.fit(
             maxlags=max_feasible_lags, method="ols", ic="bic", verbose=False, trend="c"
         )
