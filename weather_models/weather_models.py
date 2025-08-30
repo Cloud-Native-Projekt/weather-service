@@ -323,6 +323,7 @@ class WeatherDatabase:
     - Data rollover operations for weekly forecast-to-history transitions
     - Table truncation and retrieval operations
     - Session management with proper cleanup
+    - Health check validates completeness of historical data within configured date ranges
 
     The class uses SQLAlchemy ORM for database operations and includes
     logging for monitoring database activities.

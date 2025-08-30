@@ -2,39 +2,41 @@
 
 This module implements the initial setup and data population routines for the weather service
 database. It handles the creation of database tables and populates them with historical and
-forecast data when the system is first deployed or when tables are empty.
+forecast data when the system is first deployed or when database initialization is required.
 
 Bootstrap Operations:
 - Creates all required database tables if they don't exist
 - Truncates existing tables to ensure clean initialization
 - Retrieves comprehensive historical weather data from OpenMeteo Archive API
 - Fetches current forecast data from OpenMeteo Forecast API
-- Generates weekly aggregations from daily data for both historical and forecast periods
+- Generates weekly aggregations from daily historical data
+- Populates all weather data tables with fresh data
 
-The bootstrap service only runs when the database requires initialization, determined by
-checking if tables exist and contain data. This prevents accidental data loss during
-routine operations.
+The bootstrap service runs conditionally based on the WeatherDatabase.bootstrap property,
+which determines if the database requires initialization. This prevents accidental data
+overwrites during routine operations while ensuring proper setup for new deployments.
 
 Data Tables Populated:
 - DailyWeatherHistory: Historical daily weather observations
 - DailyWeatherForecast: Current daily weather forecasts
 - WeeklyWeatherHistory: Aggregated weekly historical data
-- WeeklyWeatherForecast: Aggregated weekly forecast data
+- WeeklyWeatherForecast: Weekly forecast data (table created but not populated)
 
-The service uses the OpenMeteo API clients to fetch weather data across
-the configured geographic region and time periods. It automatically handles the
-aggregation of daily data into weekly summaries using the WeeklyTableConstructor.
+The service uses OpenMeteo API clients to fetch weather data and automatically handles
+the aggregation of daily historical data into weekly summaries using the
+WeeklyTableConstructor. All tables are truncated before new data insertion to ensure
+data consistency.
 
 Dependencies:
-- OpenMeteo API clients for historical and forecast data retrieval
+- OpenMeteo API clients (Archive and Forecast) for weather data retrieval
 - WeatherDatabase for data persistence and table management
 - WeeklyTableConstructor for daily-to-weekly data aggregation
-- Pandas for data manipulation and merging operations
+- Weather model classes for ORM object creation
 
 Usage:
-    This module is typically run once during initial system deployment or when
-    database reinitialization is required. The service automatically detects
-    whether bootstrapping is needed.
+    This module is designed to run as a standalone script during system deployment
+    or when database reinitialization is required. The bootstrap logic automatically
+    detects whether initialization is needed.
 
 Example:
     python bootstrap.py
@@ -46,8 +48,6 @@ Note:
 """
 
 import logging
-
-import pandas as pd
 
 from openmeteo_client import (
     OpenMeteoArchiveClient,
