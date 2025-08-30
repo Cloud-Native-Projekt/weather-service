@@ -1,8 +1,9 @@
 """Weather Service Data Models and Database Management
 
-This module defines the complete data model architecture and database management
-system for the weather service. It provides SQLAlchemy ORM models for weather data
-storage and a comprehensive database interface for weather data operations.
+This module defines the complete data model architecture, database management system,
+and machine learning framework for the weather service. It provides SQLAlchemy ORM
+models for weather data storage, comprehensive database operations, and Vector
+Autoregression (VAR) models for weekly weather forecasting.
 
 Core Components:
 
@@ -17,6 +18,11 @@ Database Management:
 - DatabaseEngine: PostgreSQL connection and engine configuration
 - WeatherDatabase: High-level interface for all database operations
 
+Machine Learning Framework:
+- WeeklyForecastModel: VAR-based time series model for weekly weather forecasting
+- Location-specific model training and prediction capabilities
+- Model persistence and loading using joblib serialization
+
 Key Features:
 - Standardized weather measurement schema across all data tables
 - Geographic indexing for spatial weather queries (latitude/longitude)
@@ -24,7 +30,10 @@ Key Features:
 - Automatic bootstrap detection to prevent accidental data loss
 - Data conversion utilities for pandas DataFrame to ORM object transformation
 - Weekly data rollover operations for forecast-to-history transitions
-- Comprehensive logging for database operation monitoring
+- Health checks for data completeness validation and gap detection
+- Multivariate time series modeling with automatic lag order selection
+- Model training with stationarity preprocessing and BIC optimization
+- Comprehensive logging for database and model operation monitoring
 
 Data Schema:
 All weather tables inherit a common set of meteorological measurements:
@@ -44,6 +53,14 @@ environment variables for connection:
 - POSTGRES_PORT: Database server port
 - POSTGRES_DB: Target database name
 
+Machine Learning Model Architecture:
+- Vector Autoregression (VAR) for multivariate time series forecasting
+- First-order differencing for stationarity achievement
+- Bayesian Information Criterion (BIC) for optimal lag selection
+- Location-specific training for improved forecast accuracy
+- Automatic undifferencing for real-scale predictions
+- Configurable forecast horizons for flexible prediction timeframes
+
 Usage Patterns:
 
 Bootstrap Operations:
@@ -59,10 +76,21 @@ Data Operations:
 
     Query data:
         history = db.get_table(DailyWeatherHistory)
+        location_data = db.get_data_by_location(WeeklyWeatherHistory, (40.7, -74.0))
 
     Maintenance operations:
         db.truncate_table(DailyWeatherForecast)
         db.rollover_weekly_data(2024, 15)
+
+Model Operations:
+    Train location-specific models:
+        model = WeeklyForecastModel(location=(40.7128, -74.0060))
+        model.build_model(historical_data)
+        model.save('./models')
+
+    Generate forecasts:
+        loaded_model = WeeklyForecastModel.from_file('./models', location=(40.7, -74.0))
+        forecast = loaded_model.forecast(horizon=4, data=historical_data)
 
 Session Management:
     try:
@@ -75,12 +103,16 @@ Dependencies:
 - SQLAlchemy: ORM and database abstraction layer
 - pandas: Data manipulation and DataFrame operations
 - PostgreSQL: Primary database backend with psycopg2 driver
+- statsmodels: Vector Autoregression implementation for time series modeling
+- joblib: Model serialization and persistence
+- NumPy: Numerical operations and array handling
 - Python logging: Operation monitoring and debugging
 
 Note:
 This module is designed to be the single source of truth for all weather data
-models and database operations. All other services (bootstrap, maintenance, API)
-should import and use these models for data consistency.
+models, database operations, and machine learning capabilities. All other services
+(bootstrap, maintenance, forecast, API) should import and use these models for
+data consistency and forecasting functionality.
 """
 
 import logging
@@ -849,7 +881,79 @@ WeeklyForecastModelType = TypeVar(
 
 
 class WeeklyForecastModel:
+    """Weekly Weather Forecast Model for Machine Learning Predictions
+
+    This class implements a Vector Autoregression (VAR) time series model for generating
+    weekly weather forecasts based on historical weather patterns. The model is designed
+    to be location-specific, training on historical weekly weather data for a particular
+    geographic coordinate to capture local weather patterns and trends.
+
+    Model Architecture:
+    - Uses Vector Autoregression (VAR) from statsmodels for multivariate time series forecasting
+    - Applies first-order differencing to achieve stationarity in the time series data
+    - Automatically determines optimal lag order using Bayesian Information Criterion (BIC)
+    - Supports configurable forecast horizons for flexible prediction timeframes
+
+    Key Features:
+    - Location-specific model training for improved forecast accuracy
+    - Automatic lag order selection with feasibility constraints
+    - Time series differencing and undifferencing for forecast generation
+    - Model persistence and loading capabilities using joblib
+    - Comprehensive logging for training and forecasting operations
+
+    Training Process:
+    1. Converts weekly data to datetime-indexed time series
+    2. Applies first-order differencing to achieve stationarity
+    3. Computes maximum feasible lag order based on data constraints
+    4. Fits VAR model using ordinary least squares with BIC selection
+    5. Stores trained model for future forecasting operations
+
+    Forecasting Process:
+    1. Uses trained VAR model to predict differenced values
+    2. Applies cumulative sum to undifference predictions
+    3. Adds back last observed values to get actual forecast levels
+    4. Generates proper datetime index and metadata for forecast period
+
+    Data Requirements:
+    - Historical weekly weather data with 'year' and 'week' columns
+    - Sufficient data volume for reliable model training
+    - Complete time series without gaps for optimal model performance
+
+    Attributes:
+        location (Tuple[float, float]): Geographic coordinates (latitude, longitude) for the model
+        model (VARResults | VARResultsWrapper | None): Trained VAR model instance
+        logger: Configured logger for model operations
+
+    Example:
+        # Create and train model
+        model = WeeklyForecastModel(location=(40.7128, -74.0060))
+        model.build_model(historical_data)
+
+        # Generate forecasts
+        forecast = model.forecast(horizon=4, data=historical_data)
+
+        # Save and load model
+        model.save('./models')
+        loaded_model = WeeklyForecastModel.from_file('./models', location=(40.7128, -74.0060))
+    """
+
     def __init__(self, location: Tuple[float, float]) -> None:
+        """Initialize WeeklyForecastModel for a specific geographic location.
+
+        Sets up logging configuration and initializes the model instance for the specified
+        geographic coordinates. The model instance starts without a trained model and
+        requires build_model() to be called before forecasting.
+
+        Args:
+            location (Tuple[float, float]): Geographic coordinates as (latitude, longitude)
+                tuple specifying the location for which this model will generate forecasts.
+                Coordinates should match those used in the historical weather data.
+
+        Attributes:
+            location: Stores the geographic coordinates for this model instance
+            model: Initialized as None; will contain the trained VAR model after build_model()
+            logger: Configured logger instance for model operation monitoring
+        """
         logging.basicConfig(
             level=logging.INFO,
             format="%(asctime)s - %(levelname)s - %(message)s",
@@ -859,6 +963,29 @@ class WeeklyForecastModel:
         self.model: VARResults | VARResultsWrapper | None = None
 
     def __add_datetime_index(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Convert year/week columns to datetime index for time series analysis.
+
+        Transforms weekly data with separate 'year' and 'week' columns into a properly
+        indexed time series DataFrame using ISO calendar week format. The resulting
+        datetime index enables time series operations and ensures proper temporal ordering.
+
+        Args:
+            data (pd.DataFrame): Input DataFrame containing 'year' and 'week' columns
+                with weekly weather data. Week numbers should follow ISO 8601 standard
+                (1-53 range).
+
+        Returns:
+            pd.DataFrame: DataFrame with datetime index set to Monday of each ISO week,
+                sorted by date, and proper frequency information for time series operations.
+
+        Raises:
+            ValueError: If the input DataFrame does not contain both 'year' and 'week'
+                columns required for datetime index construction.
+
+        Note:
+            Uses ISO 8601 week date format (%G-W%V-%u) where weeks start on Monday.
+            The resulting index represents the Monday of each calendar week.
+        """
         if "year" in data.columns and "week" in data.columns:
             dt_index = pd.to_datetime(
                 data["year"].astype(str) + "-W" + data["week"].astype(str) + "-1",
@@ -873,6 +1000,29 @@ class WeeklyForecastModel:
         return data
 
     def __build_dataset(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Prepare time series dataset for VAR model training.
+
+        Converts raw weekly weather data into a stationary time series suitable for VAR
+        modeling by applying datetime indexing, removing non-meteorological columns, and
+        applying first-order differencing to achieve stationarity.
+
+        Args:
+            data (pd.DataFrame): Raw weekly weather data containing year, week, and
+                meteorological measurements. Must include 'year' and 'week' columns
+                for temporal identification.
+
+        Returns:
+            pd.DataFrame: Processed time series dataset with:
+                - Datetime index for temporal operations
+                - First-order differenced meteorological variables for stationarity
+                - Metadata columns removed (year, week, idx, coordinates, source)
+                - NaN values from differencing operation dropped
+
+        Note:
+            First-order differencing is applied to achieve stationarity, which is
+            required for reliable VAR model estimation. The first observation is
+            lost due to the differencing operation.
+        """
         self.logger.info("Building time-series dataset...")
 
         data = self.__add_datetime_index(data)
@@ -887,6 +1037,27 @@ class WeeklyForecastModel:
         return ts_data
 
     def __compute_max_lags(self, data: pd.DataFrame) -> int:
+        """Compute maximum feasible lag order for VAR model estimation.
+
+        Calculates the maximum number of lags that can be used in VAR model estimation
+        based on data constraints and statistical requirements. The computation ensures
+        sufficient degrees of freedom for reliable parameter estimation while respecting
+        practical computational limits.
+
+        Args:
+            data (pd.DataFrame): Time series dataset for which to compute maximum lags.
+                Must be the differenced dataset ready for VAR modeling.
+
+        Returns:
+            int: Maximum feasible lag order that balances model complexity with
+                statistical reliability. Constrained to be at least 1 and at most 156,
+                with consideration for available observations and number of variables.
+
+        Note:
+            The formula ensures at least 20 observations remain for parameter estimation
+            after accounting for lagged variables. The constraint (n_vars^2 + n_vars)
+            reflects the number of parameters per lag in a VAR model.
+        """
         n_obs = len(data)
         n_vars = len(data.columns)
 
@@ -898,6 +1069,30 @@ class WeeklyForecastModel:
         return max_feasible_lags
 
     def build_model(self, data: pd.DataFrame) -> None:
+        """Build and train the VAR time series model using historical weather data.
+
+        Trains a Vector Autoregression model on the provided historical weekly weather
+        data. The method handles data preprocessing, optimal lag selection, and model
+        fitting using ordinary least squares estimation with Bayesian Information
+        Criterion for lag order selection.
+
+        Args:
+            data (pd.DataFrame): Historical weekly weather data containing year, week,
+                and meteorological measurements.
+
+        Raises:
+            ValueError: If the data is insufficient for model training or lacks required
+                columns ('year', 'week', meteorological variables).
+
+        Side Effects:
+            Sets self.model to the trained VARResults/VARResultsWrapper instance, which
+            can then be used for generating forecasts via the forecast() method.
+
+        Note:
+            The model uses first-order differencing for stationarity and automatically
+            determines the optimal lag order within feasible constraints. Training may
+            take considerable time for large datasets or high-dimensional data.
+        """
         self.logger.info("Building time-series model...")
 
         data = self.__build_dataset(data)
@@ -917,6 +1112,36 @@ class WeeklyForecastModel:
         self.logger.info("Build success!")
 
     def forecast(self, horizon: int, data: pd.DataFrame) -> pd.DataFrame:
+        """Generate weather forecasts for the specified number of weeks ahead.
+
+        Uses the trained VAR model to generate multi-step ahead forecasts for weekly
+        weather variables. The method handles the undifferencing process to convert
+        predicted changes back to actual weather values and properly formats the
+        output with temporal and geographic metadata.
+
+        Args:
+            horizon (int): Number of weeks ahead to forecast. Must be a positive integer
+                representing the desired forecast horizon.
+            data (pd.DataFrame): Historical weekly weather data used as the basis for
+                forecasting. Should be the same format as used for model training.
+
+        Returns:
+            pd.DataFrame: Forecast DataFrame containing:
+                - Predicted meteorological variables for each forecast week
+                - Geographic coordinates (latitude, longitude) matching the model location
+                - Source identifier ('WeeklyForecastModel') for data provenance
+                - Year and week columns for temporal identification
+                - Reset index for consistent formatting with other weather data
+
+        Raises:
+            ValueError: If the model has not been trained (model is None) or if the
+                provided data is incompatible with the trained model structure.
+
+        Note:
+            Forecasts are generated using the model's lag order and the most recent
+            observations from the historical data. The undifferencing process ensures
+            forecast values are in the same scale as the original observations.
+        """
         self.logger.info(f"Forecasting the next {horizon} weeks...")
 
         if self.model is None:
@@ -960,6 +1185,28 @@ class WeeklyForecastModel:
         return forecast
 
     def save(self, directory: str, file_name: str | None = None) -> str:
+        """Save the trained model to disk for future use.
+
+        Persists the complete WeeklyForecastModel instance to disk using joblib
+        serialization. The saved model includes all trained parameters, metadata,
+        and configuration required for loading and generating forecasts.
+
+        Args:
+            directory (str): Directory path where the model file should be saved.
+                Directory must exist and be writable.
+            file_name (str | None, optional): Custom filename for the saved model.
+                If None, generates a standardized filename based on the model class
+                name and location coordinates. Defaults to None.
+
+        Returns:
+            str: Complete file path of the saved model file, suitable for loading
+                with the from_file() class method.
+
+        Note:
+            The default filename format is: 'WeeklyForecastModel_{lat}_{lon}.pkl'
+            where lat and lon are the model's geographic coordinates. Existing files
+            with the same name will be overwritten without warning.
+        """
         if not file_name:
             file_name = (
                 f"{self.__class__.__name__}_{self.location[0]}_{self.location[1]}.pkl"
@@ -978,6 +1225,37 @@ class WeeklyForecastModel:
         file_name: str | None = None,
         location: Tuple[float, float] | None = None,
     ) -> WeeklyForecastModelType:
+        """Load a trained WeeklyForecastModel from disk.
+
+        Class method that deserializes a previously saved WeeklyForecastModel instance
+        from disk using joblib. The loaded model is ready for immediate use in
+        generating forecasts without requiring retraining.
+
+        Args:
+            directory (str): Directory path containing the saved model file.
+            file_name (str | None, optional): Specific filename of the saved model.
+                If provided, takes precedence over location-based filename construction.
+                Defaults to None.
+            location (Tuple[float, float] | None, optional): Geographic coordinates
+                used to construct the standard filename if file_name is not provided.
+                Required if file_name is None. Defaults to None.
+
+        Returns:
+            WeeklyForecastModelType: Loaded WeeklyForecastModel instance with all
+                trained parameters, metadata, and configuration preserved from the
+                saved state.
+
+        Raises:
+            ValueError: If neither file_name nor location is provided, making it
+                impossible to construct the file path for loading.
+            FileNotFoundError: If the specified model file does not exist in the
+                given directory.
+
+        Note:
+            Either file_name or location must be provided to locate the saved model.
+            When using location, the method expects the standard filename format
+            generated by the save() method.
+        """
         if file_name:
             path = os.path.join(directory, file_name)
         elif location is not None:
