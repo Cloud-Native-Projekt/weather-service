@@ -112,6 +112,6 @@ if __name__ == "__main__":
         else:
             logger.info("Tables already exist. Skipping bootstrap routine...")
     except Exception as e:
-        logger.error(e)
+        logger.exception("An error occurred during the bootstrap routine: ")
     finally:
         database.close()

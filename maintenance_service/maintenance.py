@@ -170,6 +170,6 @@ if __name__ == "__main__":
 
         logger.info("Maintenance routine completed successfully!")
     except Exception as e:
-        logger.error(f"{e}")
+        logger.exception("An error occurred during the maintenance routine: ")
     finally:
         database.close()
