@@ -86,7 +86,9 @@ if __name__ == "__main__":
 
                 logger.info("Weekly forecast models build successfully!")
             except Exception as e:
-                logger.error(f"{e}")
+                logger.exception(
+                    f"An error occurred building the model for {location}:"
+                )
 
     except Exception as e:
-        logger.error(f"{e}")
+        logger.exception("An error occurred in the model build service: ")
