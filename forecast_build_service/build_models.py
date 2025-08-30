@@ -8,7 +8,7 @@ if __name__ == "__main__":
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
-    logger = logging.getLogger(name="Maintenance Service")
+    logger = logging.getLogger(name="Forecast Build Service")
 
     try:
         logger.info("Starting model build service...")
