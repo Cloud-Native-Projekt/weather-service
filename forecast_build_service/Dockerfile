@@ -8,7 +8,7 @@ COPY --from=wheels /wheels /wheels
 
 RUN pip install --user --no-cache-dir /wheels/weather_models-0.3.1-py3-none-any.whl
 
-FROM python:3.13.7-slim-trixie AS weather-maintenance-service
+FROM python:3.13.7-slim-trixie AS forecast-build-service
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
