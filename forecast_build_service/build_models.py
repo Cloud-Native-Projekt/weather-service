@@ -32,9 +32,10 @@ if __name__ == "__main__":
                 model.build_model(weekly_weather_history)
 
                 model.save(os.path.join(os.getcwd(), "models"))
+
+                logger.info("Weekly forecast models build successfully!")
             except Exception as e:
                 logger.error(f"{e}")
 
-        logger.info("Weekly forecast models build successfully!")
     except Exception as e:
         logger.error(f"{e}")
