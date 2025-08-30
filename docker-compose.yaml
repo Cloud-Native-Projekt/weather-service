@@ -89,12 +89,31 @@ services:
         condition: service_healthy
         restart: true
 
-  maintenance-service:
+  daily-maintenance-service:
     build:
       context: .
-      dockerfile: maintenance_service/Dockerfile
-    container_name: weather-maintenance-service
-    image: weather-maintenance-service:${MAINTENANCE_SERVICE_VERSION}
+      dockerfile: daily_maintenance_service/Dockerfile
+    container_name: daily-weather-maintenance-service
+    image: daily-weather-maintenance-service:${DAILY_MAINTENANCE_SERVICE_VERSION}
+    restart: no
+    environment:
+      POSTGRES_HOST: database
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: weatherdb
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: pw
+      CONFIG_FILE: dev_config.json
+    depends_on:
+      database:
+        condition: service_healthy
+        restart: true
+
+  weekly-maintenance-service:
+    build:
+      context: .
+      dockerfile: weekly_maintenance_service/Dockerfile
+    container_name: weekly-weather-maintenance-service
+    image: weekly-weather-maintenance-service:${WEEKLY_MAINTENANCE_SERVICE_VERSION}
     restart: no
     environment:
       POSTGRES_HOST: database

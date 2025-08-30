@@ -26,7 +26,7 @@ WORKDIR /app/
 COPY --from=builder /root/.local /home/appuser/.local
 
 # Copy application files
-COPY maintenance_service .
+COPY daily_maintenance_service .
 
 # Copy config files
 COPY config/ ./config/

@@ -1,53 +1,65 @@
-"""Weather Service Maintenance Module
+"""Weather Service Daily Maintenance Module
 
-This module implements the daily and weekly maintenance routines for the weather service.
-It handles data rollover, forecasting updates, database health checks, and maintenance operations.
+This module implements the daily maintenance routines for the weather service.
+It handles data rollover operations, forecast updates, database health checks,
+and automatic data gap recovery to ensure database integrity and freshness.
 
 Daily Maintenance Operations:
 - Retrieves historical weather data for the rollover period (2 days ago)
 - Truncates and refreshes daily weather forecast data with current forecasts
 - Updates the database with new historical and forecast data
-- Performs health checks to identify and backfill missing historical data
+- Performs comprehensive health checks to identify missing historical data
 - Automatically repairs data gaps by fetching missing dates from OpenMeteo Archive API
-
-Weekly Maintenance Operations (Wednesdays only):
-- Processes the previous week's completed daily historical data
-- Generates weekly aggregated data from daily historical records
-- Calculates weekly summaries using WeeklyTableConstructor
-- Updates WeeklyWeatherHistory table with new weekly data
 
 The maintenance service uses OpenMeteo API clients to fetch weather data and the
 WeatherDatabase to manage data persistence. It includes robust error handling,
-health monitoring, and automatic data gap recovery to ensure database integrity.
+health monitoring, and automatic data gap recovery to ensure database integrity
+and operational continuity.
+
+Data Rollover Process:
+- Fetches historical data for the rollover date (2 days prior to current date)
+- Converts retrieved data to ORM objects for database persistence
+- Writes new historical data to DailyWeatherHistory table
+- Refreshes forecast data by truncating and repopulating DailyWeatherForecast table
 
 Health Check Features:
 - Validates completeness of historical data within configured date ranges
 - Identifies missing dates in the DailyWeatherHistory table
 - Automatically backfills missing data by fetching from OpenMeteo Archive API
 - Ensures data continuity for reliable weather service operations
+- Provides detailed logging for monitoring and debugging data issues
+
+Data Integrity Safeguards:
+- Uses 2-day rollover delay to ensure data stability and availability
+- Comprehensive error handling to prevent partial updates
+- Individual missing date recovery without affecting other operations
+- Health check validation using configured date ranges from OpenMeteoClientConfig
 
 Dependencies:
 - OpenMeteo API clients (Archive and Forecast) for weather data retrieval
 - WeatherDatabase for data persistence, health checks, and management
-- WeeklyTableConstructor for daily-to-weekly data aggregation
-- Weather model classes for ORM object creation
+- OpenMeteoClientConfig for API configuration and date range management
+- DailyWeatherHistory and DailyWeatherForecast ORM models for data access
 
 Usage:
     This module is designed to run as a scheduled daily job to ensure the weather
     database remains current with fresh forecasts and properly archived historical data.
-    Weekly operations automatically trigger on Wednesdays.
 
 Example:
     python maintenance.py
 
-Scheduling:
-    Daily: Recommended to run early morning (e.g., 2:00 AM) to ensure fresh data
-    Weekly: Automatically runs on Wednesdays (weekday == 2) to process completed weeks
+Configuration:
+    Date ranges and API parameters are controlled via OpenMeteoClientConfig
+    which reads from external configuration files for flexibility.
+
+Output:
+    Updated DailyWeatherHistory and DailyWeatherForecast tables with fresh data,
+    complete historical records without gaps, and comprehensive operation logs.
 
 Note:
     The rollover date is set to 2 days ago to ensure data stability and account for
     delays in weather data availability. Health checks ensure no data gaps
-    exist in the historical record.
+    exist in the historical record within the configured date range.
 """
 
 import logging
@@ -57,21 +69,15 @@ from openmeteo_client import (
     OpenMeteoArchiveClient,
     OpenMeteoClientConfig,
     OpenMeteoForecastClient,
-    WeeklyTableConstructor,
 )
-from weather_models import (
-    DailyWeatherForecast,
-    DailyWeatherHistory,
-    WeatherDatabase,
-    WeeklyWeatherHistory,
-)
+from weather_models import DailyWeatherForecast, DailyWeatherHistory, WeatherDatabase
 
 if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
-    logger = logging.getLogger(name="Maintenance Service")
+    logger = logging.getLogger(name="Daily Maintenance Service")
 
     database = WeatherDatabase()
 
@@ -140,33 +146,6 @@ if __name__ == "__main__":
 
         else:
             logger.info("Daily health check passed successfully!")
-
-        if TODAY.weekday() == 2:
-            logger.info("Starting weekly maintenance job...")
-
-            start_date = TODAY - timedelta(days=TODAY.weekday()) - timedelta(days=7)
-            end_date = TODAY - timedelta(days=TODAY.weekday()) - timedelta(days=1)
-
-            historic_data_daily_last_week = database.get_data_by_date_range(
-                table=DailyWeatherHistory, start_date=start_date, end_date=end_date
-            )
-
-            historic_data_daily_last_week = database.to_dataframe(
-                historic_data_daily_last_week
-            )
-
-            historic_data_weekly, _, _ = WeeklyTableConstructor().main(
-                historic_data_daily_last_week
-            )
-            history_orm_objects_weekly = database.create_orm_objects(
-                data=historic_data_weekly, table=WeeklyWeatherHistory
-            )
-
-            database.write_data(history_orm_objects_weekly)
-
-            logger.info("Weekly maintenance routine completed successfully!")
-        else:
-            logger.info("Skipping weekly maintenance job...")
 
         logger.info("Maintenance routine completed successfully!")
     except Exception as e:
