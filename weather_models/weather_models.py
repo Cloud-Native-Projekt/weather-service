@@ -920,6 +920,16 @@ class WeeklyForecastModel:
         if self.model is None:
             raise ValueError("Model has not been built. Call build_model() first.")
 
+        non_differenced_values = (
+            self.__add_datetime_index(data.copy())
+            .drop(
+                columns=["year", "week", "idx", "latitude", "longitude", "source"],
+                errors="ignore",
+            )
+            .iloc[-1]
+            .values
+        )
+
         ts_data = self.__build_dataset(data.copy())
 
         p = self.model.k_ar
@@ -928,7 +938,7 @@ class WeeklyForecastModel:
 
         self.logger.info("Building dataset...")
 
-        forecast = forecast.cumsum(axis=0) + ts_data.iloc[-1].values
+        forecast = forecast.cumsum(axis=0) + non_differenced_values
 
         forecast = pd.DataFrame(forecast, columns=ts_data.columns)
 
@@ -968,10 +978,10 @@ class WeeklyForecastModel:
     ) -> WeeklyForecastModelType:
         if file_name:
             path = os.path.join(directory, file_name)
-        elif location:
+        elif location is not None:
             path = os.path.join(
                 directory,
-                f"{cls.__class__.__name__}_{location[0]}_{location[1]}.pkl",
+                f"{cls.__name__}_{location[0]}_{location[1]}.pkl",
             )
         else:
             raise ValueError(
