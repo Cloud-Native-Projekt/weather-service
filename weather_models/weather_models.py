@@ -634,7 +634,7 @@ class WeatherDatabase:
                 )
             ).all()
 
-            if not expected_dates.issubset(entries):
+            if not expected_dates.issubset(set(entries)):
                 local_missing_entries = [
                     datum for datum in expected_dates if datum not in entries
                 ]
