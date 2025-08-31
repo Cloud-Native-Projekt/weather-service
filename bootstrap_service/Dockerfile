@@ -6,8 +6,7 @@ WORKDIR /app
 # Copy pre-built wheels
 COPY --from=wheels /wheels /wheels
 
-RUN pip install --user --no-cache-dir /wheels/weather_models-0.3.2-py3-none-any.whl
-RUN pip install --user --no-cache-dir /wheels/openmeteo_client-0.1.3-py3-none-any.whl
+RUN pip install --user --no-cache-dir --find-links /wheels openmeteo_client weather_models
 
 FROM python:3.13.7-slim-trixie
 
