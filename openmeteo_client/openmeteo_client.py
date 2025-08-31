@@ -406,6 +406,13 @@ class OpenMeteoClientConfig:
             and isinstance(bounding_box["west"], float)
             and isinstance(bounding_box["east"], float)
         ):
+            if (
+                bounding_box["north"] == bounding_box["south"]
+                and bounding_box["east"] == bounding_box["west"]
+            ):
+                locations = np.array([[bounding_box["south"], bounding_box["west"]]])
+                return locations
+
             latitude_range = np.arange(
                 bounding_box["south"],
                 bounding_box["north"],
@@ -1100,6 +1107,8 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
                 self.config.history_end_date.year + 1,
             )
         )
+
+        print(self.config.locations)
 
         num_requests = self.config.locations.shape[0] * len(years)
         time_estimate = self.get_request_time_estimate(num_requests)
