@@ -933,6 +933,30 @@ class WeatherDatabase:
 
         return dataframe
 
+    def connectivity_test(self) -> bool:
+        """Test database connectivity by executing a simple query.
+
+        Performs a basic connectivity test by attempting to execute a simple SQL query
+        against the database. This method verifies that the database connection is
+        active and the database is responding to queries.
+
+        Returns:
+            bool: True if the database connection is successful and responsive,
+                False if any connection or query execution errors occur.
+
+        Note:
+            This method uses a lightweight query (SELECT 1) that doesn't depend on
+            specific table existence, making it suitable for connectivity testing
+            even during bootstrap scenarios.
+        """
+        try:
+            self.DB_SESSION.execute(select(1))
+            self.logger.info("Database connectivity test passed.")
+            return True
+        except Exception as e:
+            self.logger.error(f"Database connectivity test failed: {e}")
+            return False
+
     @property
     def bootstrap(self) -> bool:
         """Determine if database bootstrap initialization is required.
