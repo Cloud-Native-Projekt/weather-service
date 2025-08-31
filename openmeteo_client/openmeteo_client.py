@@ -1121,7 +1121,7 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
                 )
                 end_date = (
                     date(year, 12, 31)
-                    if year < date.today().year
+                    if date(year, 12, 31) < self.config.history_end_date
                     else self.config.history_end_date
                 )
                 fractional_query_params = {
