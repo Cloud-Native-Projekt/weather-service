@@ -14,6 +14,7 @@ WORKDIR /app
 # Copy source packages
 COPY weather_models/ ./weather_models/
 COPY openmeteo_client/ ./openmeteo_client/
+COPY frontend_api/ ./frontend_api/
 
 RUN mkdir -p /wheels
 
@@ -23,6 +24,10 @@ RUN poetry build
 RUN mv dist/*.whl /wheels/
 
 WORKDIR /app/openmeteo_client
+RUN poetry build
+RUN mv dist/*.whl /wheels/
+
+WORKDIR /app/frontend_api
 RUN poetry build
 RUN mv dist/*.whl /wheels/
 
