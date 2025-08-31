@@ -130,6 +130,7 @@ from typing import (
     TypeVar,
     get_type_hints,
 )
+from warnings import deprecated
 
 import joblib
 import numpy as np
@@ -537,10 +538,22 @@ class WeatherDatabase:
             bool: True if all dates in the range exist in the table, False if any
                 dates are missing.
         """
-        date_range = self.__check_date_range(start_date, end_date, table)
+        self.__missing_entries = self.__check_missing_entries(
+            start_date, end_date, table
+        )
 
-        return date_range
+        if not self.__missing_entries:
+            self.logger.info("Health check passed - no missing entries found.")
 
+            return True
+        else:
+            self.logger.warning(
+                f"Health check failed - {len(self.__missing_entries)} missing entries found."
+            )
+
+            return False
+
+    @deprecated("This method is deprecated and will be removed in a future version")
     def __check_date_range(
         self,
         start_date: date,
@@ -578,6 +591,48 @@ class WeatherDatabase:
                 f"Data does not contain all expected dates. Expected start date: {start_date} Expected end date: {end_date}"
             )
             return False
+
+    def __check_missing_entries(
+        self, start_date: date, end_date: date, table: Type[DailyWeatherHistory]
+    ) -> List[Tuple[date, float, float]]:
+        """_summary_
+
+        Args:
+            start_date (date): _description_
+            end_date (date): _description_
+            table (Type[DailyWeatherHistory]): _description_
+
+        Returns:
+            List[Tuple[date, float, float]]: _description_
+        """
+        missing_entries = []
+
+        available_locations = self.get_locations(table)
+
+        expected_dates = {
+            start_date + timedelta(days=i)
+            for i in range((end_date - start_date).days + 1)
+        }
+
+        for location in available_locations:
+            entries = self.DB_SESSION.scalars(
+                select(table.date).where(
+                    (table.latitude == float(location[0]))
+                    & (table.longitude == float(location[1]))
+                )
+            ).all()
+
+            if not expected_dates.issubset(entries):
+                local_missing_entries = [
+                    datum for datum in expected_dates if datum not in entries
+                ]
+
+                for missing_entry in local_missing_entries:
+                    missing_entries.append(
+                        (missing_entry, float(location[0]), float(location[1]))
+                    )
+
+        return missing_entries
 
     def get_missing_dates(
         self,
@@ -877,6 +932,20 @@ class WeatherDatabase:
                 False if database is properly initialized with data.
         """
         return self.__bootstrap()
+
+    @property
+    def get_missing_entries(self) -> List[Tuple[date, float, float]]:
+        """_summary_
+
+        Returns:
+            List[Tuple[date, float, float]] | None: _description_
+        """
+        if self.__missing_entries:
+            return self.__missing_entries
+        else:
+            raise ValueError(
+                f"{self.__class__.__name__} does not yet have a missing_entries property. Call health_check() first."
+            )
 
 
 WeeklyForecastModelType = TypeVar(
