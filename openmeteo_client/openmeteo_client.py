@@ -1111,8 +1111,6 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
             )
         )
 
-        print(self.config.locations)
-
         num_requests = self.config.locations.shape[0] * len(years)
         time_estimate = self.get_request_time_estimate(num_requests)
 
