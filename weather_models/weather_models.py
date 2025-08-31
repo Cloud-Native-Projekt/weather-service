@@ -523,9 +523,9 @@ class WeatherDatabase:
         end_date: date,
         table: Type[DailyWeatherHistory],
     ) -> bool:
-        """Check if all expected dates exist in the specified daily weather table.
+        """Check if all expected entries exist in the DailyWeatherHistory table.
 
-        Validates data completeness by verifying that all dates within the specified
+        Validates data completeness by verifying that all entries within the specified
         range are present in the database table. This is useful for ensuring data
         integrity before performing operations that depend on continuous date ranges.
 
@@ -535,8 +535,8 @@ class WeatherDatabase:
             table (Type[DailyWeatherHistory]: The DailyWeatherHistory table class to check.
 
         Returns:
-            bool: True if all dates in the range exist in the table, False if any
-                dates are missing.
+            bool: True if all entries in the range exist in the table, False if any
+                entries are missing.
         """
         self.__missing_entries = self.__check_missing_entries(
             start_date, end_date, table
@@ -595,15 +595,27 @@ class WeatherDatabase:
     def __check_missing_entries(
         self, start_date: date, end_date: date, table: Type[DailyWeatherHistory]
     ) -> List[Tuple[date, float, float]]:
-        """_summary_
+        """Check for missing date-location combinations in the DailyWeatherHistory table.
+
+        Performs a comprehensive check to identify missing entries by cross-referencing
+        all available locations with all expected dates within the specified range.
+        For each location in the database, verifies that weather data exists for every
+        date in the expected range and returns a list of missing date-location combinations.
+
+        This method enables granular identification of data gaps by location and date,
+        allowing for targeted data retrieval to fill specific missing entries rather
+        than broad date range queries.
 
         Args:
-            start_date (date): _description_
-            end_date (date): _description_
-            table (Type[DailyWeatherHistory]): _description_
+            start_date (date): The beginning date of the range to check (inclusive).
+            end_date (date): The ending date of the range to check (inclusive).
+            table (Type[DailyWeatherHistory]): The DailyWeatherHistory table class to examine.
 
         Returns:
-            List[Tuple[date, float, float]]: _description_
+            List[Tuple[date, float, float]]: List of tuples representing missing entries,
+                where each tuple contains (missing_date, latitude, longitude). Returns
+                empty list if all expected date-location combinations are present in
+                the database.
         """
         missing_entries = []
 
@@ -935,10 +947,31 @@ class WeatherDatabase:
 
     @property
     def get_missing_entries(self) -> List[Tuple[date, float, float]]:
-        """_summary_
+        """Retrieve the list of missing date-location combinations from the last health check.
+
+        Property that returns the cached list of missing entries identified during the most
+        recent health_check() operation. This provides access to granular information about
+        which specific date-location combinations are absent from the database, enabling
+        targeted data retrieval for gap filling.
+
+        The property maintains the results from the last health check to avoid repeated
+        database queries when the same missing entries information is needed multiple times.
+        Each tuple in the returned list represents a specific missing entry that can be
+        addressed individually through targeted API requests.
 
         Returns:
-            List[Tuple[date, float, float]] | None: _description_
+            List[Tuple[date, float, float]]: List of tuples representing missing entries,
+                where each tuple contains (missing_date, latitude, longitude). The list
+                reflects the state at the time of the last health_check() call.
+
+        Raises:
+            ValueError: If health_check() has not been called yet on this WeatherDatabase
+                instance, meaning no missing entries data is available to retrieve.
+
+        Note:
+            This property provides read-only access to cached health check results.
+            To refresh the missing entries data, call health_check() again which will
+            update the internal __missing_entries attribute.
         """
         if self.__missing_entries:
             return self.__missing_entries
