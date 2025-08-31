@@ -975,7 +975,7 @@ class WeatherDatabase:
             To refresh the missing entries data, call health_check() again which will
             update the internal __missing_entries attribute.
         """
-        if self.__missing_entries:
+        if hasattr(self, "_WeatherDatabase__missing_entries"):
             return self.__missing_entries
         else:
             raise ValueError(
