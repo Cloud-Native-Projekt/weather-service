@@ -646,6 +646,7 @@ class WeatherDatabase:
 
         return missing_entries
 
+    @deprecated("This method is deprecated and will be removed in a future version")
     def get_missing_dates(
         self,
         start_date: date,
@@ -774,6 +775,7 @@ class WeatherDatabase:
 
         return target_object
 
+    @deprecated("This method is deprecated and will be removed in a future version")
     def rollover_weekly_data(self, rollover_year: int, rollover_week: int) -> None:
         """Transfer weekly forecast data to historical data for a completed week.
 
