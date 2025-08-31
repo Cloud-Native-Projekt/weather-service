@@ -127,6 +127,27 @@ services:
         condition: service_healthy
         restart: true
 
+  api-service:
+    build:
+      context: .
+      dockerfile: api_service/Dockerfile
+    container_name: weather-api-service
+    image: weather-api-service
+    restart: no
+    ports:
+      - "8000:8000"
+    environment:
+      POSTGRES_HOST: database
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: weatherdb
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: pw
+    depends_on:
+      database:
+        condition: service_healthy
+        restart: true
+
+
 volumes:
   data:
   forecast_models:
