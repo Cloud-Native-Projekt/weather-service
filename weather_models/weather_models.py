@@ -130,6 +130,7 @@ from typing import (
     TypeVar,
     get_type_hints,
 )
+from warnings import deprecated
 
 import joblib
 import numpy as np
@@ -522,9 +523,9 @@ class WeatherDatabase:
         end_date: date,
         table: Type[DailyWeatherHistory],
     ) -> bool:
-        """Check if all expected dates exist in the specified daily weather table.
+        """Check if all expected entries exist in the DailyWeatherHistory table.
 
-        Validates data completeness by verifying that all dates within the specified
+        Validates data completeness by verifying that all entries within the specified
         range are present in the database table. This is useful for ensuring data
         integrity before performing operations that depend on continuous date ranges.
 
@@ -534,13 +535,25 @@ class WeatherDatabase:
             table (Type[DailyWeatherHistory]: The DailyWeatherHistory table class to check.
 
         Returns:
-            bool: True if all dates in the range exist in the table, False if any
-                dates are missing.
+            bool: True if all entries in the range exist in the table, False if any
+                entries are missing.
         """
-        date_range = self.__check_date_range(start_date, end_date, table)
+        self.__missing_entries = self.__check_missing_entries(
+            start_date, end_date, table
+        )
 
-        return date_range
+        if not self.__missing_entries:
+            self.logger.info("Health check passed - no missing entries found.")
 
+            return True
+        else:
+            self.logger.warning(
+                f"Health check failed - {len(self.__missing_entries)} missing entries found."
+            )
+
+            return False
+
+    @deprecated("This method is deprecated and will be removed in a future version")
     def __check_date_range(
         self,
         start_date: date,
@@ -579,6 +592,61 @@ class WeatherDatabase:
             )
             return False
 
+    def __check_missing_entries(
+        self, start_date: date, end_date: date, table: Type[DailyWeatherHistory]
+    ) -> List[Tuple[date, float, float]]:
+        """Check for missing date-location combinations in the DailyWeatherHistory table.
+
+        Performs a comprehensive check to identify missing entries by cross-referencing
+        all available locations with all expected dates within the specified range.
+        For each location in the database, verifies that weather data exists for every
+        date in the expected range and returns a list of missing date-location combinations.
+
+        This method enables granular identification of data gaps by location and date,
+        allowing for targeted data retrieval to fill specific missing entries rather
+        than broad date range queries.
+
+        Args:
+            start_date (date): The beginning date of the range to check (inclusive).
+            end_date (date): The ending date of the range to check (inclusive).
+            table (Type[DailyWeatherHistory]): The DailyWeatherHistory table class to examine.
+
+        Returns:
+            List[Tuple[date, float, float]]: List of tuples representing missing entries,
+                where each tuple contains (missing_date, latitude, longitude). Returns
+                empty list if all expected date-location combinations are present in
+                the database.
+        """
+        missing_entries = []
+
+        available_locations = self.get_locations(table)
+
+        expected_dates = {
+            start_date + timedelta(days=i)
+            for i in range((end_date - start_date).days + 1)
+        }
+
+        for location in available_locations:
+            entries = self.DB_SESSION.scalars(
+                select(table.date).where(
+                    (table.latitude == float(location[0]))
+                    & (table.longitude == float(location[1]))
+                )
+            ).all()
+
+            if not expected_dates.issubset(set(entries)):
+                local_missing_entries = [
+                    datum for datum in expected_dates if datum not in entries
+                ]
+
+                for missing_entry in local_missing_entries:
+                    missing_entries.append(
+                        (missing_entry, float(location[0]), float(location[1]))
+                    )
+
+        return missing_entries
+
+    @deprecated("This method is deprecated and will be removed in a future version")
     def get_missing_dates(
         self,
         start_date: date,
@@ -707,6 +775,7 @@ class WeatherDatabase:
 
         return target_object
 
+    @deprecated("This method is deprecated and will be removed in a future version")
     def rollover_weekly_data(self, rollover_year: int, rollover_week: int) -> None:
         """Transfer weekly forecast data to historical data for a completed week.
 
@@ -877,6 +946,41 @@ class WeatherDatabase:
                 False if database is properly initialized with data.
         """
         return self.__bootstrap()
+
+    @property
+    def get_missing_entries(self) -> List[Tuple[date, float, float]]:
+        """Retrieve the list of missing date-location combinations from the last health check.
+
+        Property that returns the cached list of missing entries identified during the most
+        recent health_check() operation. This provides access to granular information about
+        which specific date-location combinations are absent from the database, enabling
+        targeted data retrieval for gap filling.
+
+        The property maintains the results from the last health check to avoid repeated
+        database queries when the same missing entries information is needed multiple times.
+        Each tuple in the returned list represents a specific missing entry that can be
+        addressed individually through targeted API requests.
+
+        Returns:
+            List[Tuple[date, float, float]]: List of tuples representing missing entries,
+                where each tuple contains (missing_date, latitude, longitude). The list
+                reflects the state at the time of the last health_check() call.
+
+        Raises:
+            ValueError: If health_check() has not been called yet on this WeatherDatabase
+                instance, meaning no missing entries data is available to retrieve.
+
+        Note:
+            This property provides read-only access to cached health check results.
+            To refresh the missing entries data, call health_check() again which will
+            update the internal __missing_entries attribute.
+        """
+        if hasattr(self, "_WeatherDatabase__missing_entries"):
+            return self.__missing_entries
+        else:
+            raise ValueError(
+                f"{self.__class__.__name__} does not yet have a missing_entries property. Call health_check() first."
+            )
 
 
 WeeklyForecastModelType = TypeVar(

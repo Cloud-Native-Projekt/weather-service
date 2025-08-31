@@ -406,6 +406,13 @@ class OpenMeteoClientConfig:
             and isinstance(bounding_box["west"], float)
             and isinstance(bounding_box["east"], float)
         ):
+            if (
+                bounding_box["north"] == bounding_box["south"]
+                and bounding_box["east"] == bounding_box["west"]
+            ):
+                locations = np.array([[bounding_box["south"], bounding_box["west"]]])
+                return locations
+
             latitude_range = np.arange(
                 bounding_box["south"],
                 bounding_box["north"],
@@ -995,15 +1002,18 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
 
             data = pd.concat([data, processed_response], axis=0)
 
-        data["date"] = pd.to_datetime(
-            data["date"], format="%Y-%m-%d %H:%M:%S"
-        ).dt.strftime("%Y-%m-%d")
+        if not data.empty:
+            data["date"] = pd.to_datetime(
+                data["date"], format="%Y-%m-%d %H:%M:%S"
+            ).dt.strftime("%Y-%m-%d")
 
-        data = data.drop_duplicates()
+            data = data.drop_duplicates()
 
-        self.logger.info(f"{self.__class__.__name__} exited successfully.")
+            self.logger.info(f"{self.__class__.__name__} exited successfully.")
 
-        return data
+            return data
+        else:
+            raise ValueError("Requests returned empty responses.")
 
 
 class OpenMeteoArchiveClient(OpenMeteoClient):
