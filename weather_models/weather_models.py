@@ -611,6 +611,10 @@ class WeatherDatabase:
             datum for datum in expected_dates if datum not in available_dates
         ]
 
+        self.logger.info(
+            f"Database is missing the entries for the following dates: {missing_dates}"
+        )
+
         return missing_dates
 
     def get_date_range(
