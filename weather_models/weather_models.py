@@ -575,7 +575,7 @@ class WeatherDatabase:
             return True
         else:
             self.logger.info(
-                f"Data does not contain all expected dates. Expected start date: {start_date} Expected end date: {end_date} Got: {available_dates}"
+                f"Data does not contain all expected dates. Expected start date: {start_date} Expected end date: {end_date}"
             )
             return False
 
@@ -610,6 +610,10 @@ class WeatherDatabase:
         missing_dates = [
             datum for datum in expected_dates if datum not in available_dates
         ]
+
+        self.logger.info(
+            f"Database is missing the entries for the following dates: {missing_dates}"
+        )
 
         return missing_dates
 
