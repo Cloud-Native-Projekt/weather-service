@@ -3,14 +3,6 @@ name: CD Pipeline - Build and Push
 on:
   workflow_dispatch:
     inputs:
-      environment:
-        description: 'Target environment'
-        required: false
-        default: 'production'
-        type: choice
-        options:
-          - production
-          - staging
       services:
         description: 'Services to build (comma-separated, or "all" for all services)'
         required: false
@@ -155,7 +147,6 @@ jobs:
       - name: Build Summary
         run: |
           echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- **Environment**: ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Services**: ${{ github.event.inputs.services }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit SHA**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
