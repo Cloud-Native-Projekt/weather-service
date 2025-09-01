@@ -19,7 +19,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build-base:
@@ -33,6 +32,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set lowercase repository name
+        id: repo
+        run: echo "name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -48,7 +51,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/build_service
+          images: ${{ env.REGISTRY }}/${{ steps.repo.outputs.name }}/build_service
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -68,7 +71,7 @@ jobs:
 
       - name: Set output
         id: image
-        run: echo "image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/build_service:${{ github.sha }}" >> $GITHUB_OUTPUT
+        run: echo "image=${{ env.REGISTRY }}/${{ steps.repo.outputs.name }}/build_service:${{ github.sha }}" >> $GITHUB_OUTPUT
 
   build-services:
     name: Build Services
@@ -94,6 +97,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set lowercase repository name
+        id: repo
+        run: echo "name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
       - name: Check if service should be built
         id: should_build
@@ -126,7 +133,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service.name }}
+          images: ${{ env.REGISTRY }}/${{ steps.repo.outputs.name }}/${{ matrix.service.name }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
