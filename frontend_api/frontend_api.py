@@ -1,3 +1,4 @@
+import re
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
@@ -5,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 import numpy as np
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import Row, func, select
+from sqlalchemy import Row, func, select, tuple_
 
 from weather_models import (
     DailyWeatherForecast,
@@ -28,6 +29,11 @@ WeatherTable = Union[
 
 HISTORY_CUTOFF = date.today() - timedelta(days=2)
 
+WEEKLY_HISTORY_CUTOFF = (
+    HISTORY_CUTOFF.isocalendar().year,
+    HISTORY_CUTOFF.isocalendar().week,
+)
+
 TABLE_MAP: Dict[str, Type[WeatherTable]] = {
     "daily_history": DailyWeatherHistory,
     "daily_forecast": DailyWeatherForecast,
@@ -37,6 +43,10 @@ TABLE_MAP: Dict[str, Type[WeatherTable]] = {
 
 TIMESPAN_ERROR_MESSAGE = "Error retrieving available dates"
 EMPTY_RESULT_SET_MESSAGE = "Request did not produce any results."
+
+CALENDAR_WEEK_PATTERN = rf"^(?:19|20)\d{2}-(?:0[1-9]|[1-4]\d|5[0-3])$"
+CALENDAR_WEEK_RANGE_PATTERN = r"^(?:19|20)\d{2}-(?:0[1-9]|[1-4]\d|5[0-3])\s*:\s*(?:19|20)\d{2}-(?:0[1-9]|[1-4]\d|5[0-3])$"
+CALENDAR_WEEK_LIST_PATTERN = r"^(?:19|20)\d{2}-(?:0[1-9]|[1-4]\d|5[0-3])(?:,\s*(?:19|20)\d{2}-(?:0[1-9]|[1-4]\d|5[0-3]))*$"
 
 
 class WeatherDataResponse(BaseModel):
@@ -63,10 +73,6 @@ class DailyWeatherResponse(WeatherDataResponse):
 class WeeklyWeatherResponse(WeatherDataResponse):
     year: int
     week: int
-
-
-class WeeklyForecastResponse(WeeklyWeatherResponse):
-    source: str
 
 
 class LocationResponse(BaseModel):
@@ -348,6 +354,55 @@ async def get_daily_data(
             raise HTTPException(
                 status_code=400,
                 detail=f"Request requires a date, list of dates, or a date range.\nExpected: date string, comma-separated dates, or date range\nGot {datum} instead",
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving data: {e}")
+
+
+@app.get(
+    "/weekly/{calendar_week}/{latitude}/{longitude}/{metrics}",
+    response_model=WeeklyWeatherResponse | List[WeeklyWeatherResponse],
+)
+async def get_weekly_data(
+    calendar_week: str,
+    latitude: float,
+    longitude: float,
+    metrics: str,
+) -> WeeklyWeatherResponse | List[WeeklyWeatherResponse]:
+    """Get weekly weather data for specified date(s), location, and metrics.
+
+    Args:
+        calendar_week (str): Calendar week in YYYY-WW format, comma-separated calendar weeks, or calendar_week_range range (start:end)
+        latitude (float): Latitude coordinate
+        longitude (float): Longitude coordinate
+        metrics (str): Comma-separated list of metrics or 'all'
+
+    Raises:
+        HTTPException: When parameters are invalid or data retrieval fails
+
+    Returns:
+        WeeklyWeatherResponse | List[WeeklyWeatherResponse]: Weather data response(s)
+    """
+    try:
+
+        if re.fullmatch(CALENDAR_WEEK_PATTERN, calendar_week):
+            return __process_single_week_request(
+                calendar_week, latitude, longitude, metrics
+            )
+
+        elif re.fullmatch(CALENDAR_WEEK_LIST_PATTERN, calendar_week):
+            return __process_week_list_request(
+                calendar_week, latitude, longitude, metrics
+            )
+
+        elif re.fullmatch(CALENDAR_WEEK_RANGE_PATTERN, calendar_week):
+            return __process_week_range_request(
+                calendar_week, latitude, longitude, metrics
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Request requires a calendar week, list of calendar weeks, or a calendar week range.\nExpected: Calendar week in YYYY-WW format, comma-separated calendar weeks, or calendar_week_range range (start:end)\nGot {calendar_week} instead",
             )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving data: {e}")
@@ -767,3 +822,238 @@ def __process_date_range_request(
             status_code=400,
             detail=f"Request requires a date, list of dates, or a date range.\nExpected: Date in YYYY-MM-DD format, comma-separated dates, or date range (start:end)\nGot {datum} - {type(datum)} instead",
         )
+
+
+def __process_single_week_request(
+    calendar_week: str, latitude: float, longitude: float, metrics: str
+) -> WeeklyWeatherResponse:
+    """Process weather data request for a single calendar week.
+
+    Determines whether to query history or forecast table based on the
+    calendar week relative to WEEKLY_HISTORY_CUTOFF, finds nearest location, and returns
+    weather data for the specified metrics.
+
+    Args:
+        calendar_week (str): Target calendar week for weather data.
+        latitude (float): Target latitude coordinate.
+        longitude (float): Target longitude coordinate.
+        metrics (str): Comma-separated metric names or "all".
+
+    Returns:
+        WeeklyWeatherResponse: Weather data for the specified calendar week and location.
+
+    Raises:
+        HTTPException: Status 500 when no data is found or query fails.
+    """
+    year, week = int(calendar_week.split("-", 1)[0]), int(
+        calendar_week.split("-", 1)[1]
+    )
+
+    table = (
+        WeeklyWeatherHistory
+        if year <= WEEKLY_HISTORY_CUTOFF[0] and week <= WEEKLY_HISTORY_CUTOFF[1]
+        else WeeklyWeatherForecast
+    )
+
+    latitude, longitude = __nearest_matching(latitude, longitude, table)
+
+    columns = __get_cols(table, metrics)
+
+    response = database.DB_SESSION.execute(  # type: ignore
+        select(*columns).where(
+            (table.year == year)
+            & (table.week == week)
+            & (table.latitude == latitude)
+            & (table.longitude == longitude)
+        )
+    ).one()
+
+    if response != None:
+        column_names = [col.key for col in columns]
+
+        response_body = __build_response_body(
+            response, WeeklyWeatherResponse, column_names
+        )
+
+        return WeeklyWeatherResponse(**response_body)
+    else:
+        raise HTTPException(status_code=500, detail=EMPTY_RESULT_SET_MESSAGE)
+
+
+def __process_week_list_request(
+    calendar_week: str, latitude: float, longitude: float, metrics: str
+) -> List[WeeklyWeatherResponse]:
+    """Process weather data request for multiple specific calendar weeks.
+
+    Splits calendar weeks into history and forecast categories based on WEEKLY_HISTORY_CUTOFF,
+    queries appropriate tables, and combines results.
+
+    Args:
+        calendar_week (str): Comma separated list of calendar weeks.
+        latitude (float): Target latitude coordinate.
+        longitude (float): Target longitude coordinate.
+        metrics (str): Comma-separated metric names or "all".
+
+    Returns:
+        List[WeeklyWeatherResponse]: Weather data for all specified calendar weeks.
+
+    Raises:
+        HTTPException: Status 400 when date format is invalid.
+        HTTPException: Status 500 when no data is found or query fails.
+    """
+    cw_strings = [cw.strip() for cw in calendar_week.split(",")]
+
+    calendar_weeks = [
+        (int(cw.split("-")[0]), int(cw.split("-")[1])) for cw in cw_strings
+    ]
+
+    history_cws = [week for week in calendar_weeks if week <= WEEKLY_HISTORY_CUTOFF]
+    forecast_cws = [week for week in calendar_weeks if week > WEEKLY_HISTORY_CUTOFF]
+
+    response = []
+
+    if history_cws:
+        latitude, longitude = __nearest_matching(
+            latitude, longitude, WeeklyWeatherHistory
+        )
+
+        columns = __get_cols(WeeklyWeatherHistory, metrics)
+
+        history_entries = database.DB_SESSION.execute(  # type: ignore
+            select(*columns).where(
+                tuple_(WeeklyWeatherHistory.year, WeeklyWeatherHistory.week).in_(
+                    history_cws
+                )
+                & (WeeklyWeatherHistory.latitude == latitude)
+                & (WeeklyWeatherHistory.longitude == longitude)
+            )
+        ).all()
+
+        response.extend(history_entries)
+
+    if forecast_cws:
+        latitude, longitude = __nearest_matching(
+            latitude, longitude, WeeklyWeatherForecast
+        )
+
+        columns = __get_cols(WeeklyWeatherForecast, metrics)
+
+        forecast_entries = database.DB_SESSION.execute(  # type: ignore
+            select(*columns).where(
+                tuple_(WeeklyWeatherForecast.year, WeeklyWeatherForecast.week).in_(
+                    forecast_cws
+                )
+                & (WeeklyWeatherForecast.latitude == latitude)
+                & (WeeklyWeatherForecast.longitude == longitude)
+            )
+        ).all()
+
+        response.extend(forecast_entries)
+
+    if response:
+        column_names = [col.key for col in columns]  # type: ignore
+
+        response = [
+            WeeklyWeatherResponse(
+                **__build_response_body(row, WeeklyWeatherResponse, column_names)
+            )
+            for row in response
+        ]
+
+        return response
+    else:
+        raise HTTPException(status_code=500, detail=EMPTY_RESULT_SET_MESSAGE)
+
+
+def __process_week_range_request(
+    calendar_week: str, latitude: float, longitude: float, metrics: str
+) -> List[WeeklyWeatherResponse]:
+    """Process weather data request for a calendar week range.
+
+    Handles calendar week ranges that may span both history and forecast periods,
+    automatically splitting queries between appropriate tables.
+
+    Args:
+        calendar_week (str): Start and end calendar weeks for the range.
+        latitude (float): Target latitude coordinate.
+        longitude (float): Target longitude coordinate.
+        metrics (str): Comma-separated metric names or "all".
+
+    Returns:
+        List[WeeklyWeatherResponse]: Weather data for all calendar weeks in the range.
+
+    Raises:
+        HTTPException: Status 400 when date format is invalid.
+        HTTPException: Status 500 when no data is found or query fails.
+    """
+    start_str, end_str = calendar_week.split(":", 1)
+
+    start_year, start_week = start_str.split("-", 1)
+    start_cw = (int(start_year), int(start_week))
+
+    end_year, end_week = end_str.split("-", 1)
+    end_cw = (int(end_year), int(end_week))
+
+    response = []
+
+    if start_cw <= WEEKLY_HISTORY_CUTOFF:
+        latitude, longitude = __nearest_matching(
+            latitude, longitude, WeeklyWeatherHistory
+        )
+
+        columns = __get_cols(WeeklyWeatherHistory, metrics)
+
+        history_entries = database.DB_SESSION.execute(  # type: ignore
+            select(*columns).where(
+                (
+                    tuple_(WeeklyWeatherHistory.year, WeeklyWeatherHistory.week)
+                    >= start_cw
+                )
+                & (
+                    tuple_(WeeklyWeatherHistory.year, WeeklyWeatherHistory.week)
+                    <= end_cw
+                )
+                & (WeeklyWeatherHistory.latitude == latitude)
+                & (WeeklyWeatherHistory.longitude == longitude)
+            )
+        ).all()
+
+        response.extend(history_entries)
+
+    if end_cw > WEEKLY_HISTORY_CUTOFF:
+        latitude, longitude = __nearest_matching(
+            latitude, longitude, WeeklyWeatherForecast
+        )
+
+        columns = __get_cols(WeeklyWeatherForecast, metrics)
+
+        forecast_entries = database.DB_SESSION.execute(  # type: ignore
+            select(*columns).where(
+                (
+                    tuple_(WeeklyWeatherForecast.year, WeeklyWeatherForecast.week)
+                    >= start_cw
+                )
+                & (
+                    tuple_(WeeklyWeatherForecast.year, WeeklyWeatherForecast.week)
+                    <= end_cw
+                )
+                & (WeeklyWeatherForecast.latitude == latitude)
+                & (WeeklyWeatherForecast.longitude == longitude)
+            )
+        ).all()
+
+        response.extend(forecast_entries)
+
+    if response:
+        column_names = [col.key for col in columns]  # type: ignore
+
+        response = [
+            WeeklyWeatherResponse(
+                **__build_response_body(row, WeeklyWeatherResponse, column_names)
+            )
+            for row in response
+        ]
+
+        return response
+    else:
+        raise HTTPException(status_code=500, detail=EMPTY_RESULT_SET_MESSAGE)
