@@ -132,7 +132,7 @@ services:
       context: .
       dockerfile: api_service/Dockerfile
     container_name: weather-api-service
-    image: weather-api-service
+    image: weather-api-service:${WEATHER_API_SERVICE_VERSION}
     restart: no
     ports:
       - "8000:8000"
