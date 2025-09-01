@@ -690,7 +690,7 @@ def __process_single_date_request(
         )
     ).one()
 
-    if response != None:
+    if response is not None:
         column_names = [col.key for col in columns]
 
         response_body = __build_response_body(
