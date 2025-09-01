@@ -252,6 +252,8 @@ develop = true
 
 [package.dependencies]
 fastapi = ">=0.116.1,<0.117.0"
+numpy = ">=2.3.2,<3.0.0"
+sqlalchemy = ">=2.0.43,<3.0.0"
 uvicorn = ">=0.35.0,<0.36.0"
 
 [package.source]
