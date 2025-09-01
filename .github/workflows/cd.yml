@@ -37,6 +37,22 @@ jobs:
         id: repo
         run: echo "name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
+      - name: Generate image tags
+        id: tags
+        run: |
+          REPO_LOWERCASE=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')
+          IMAGE_BASE="${{ env.REGISTRY }}/${REPO_LOWERCASE}/build_service"
+          
+          # Generate tags
+          TAGS="${IMAGE_BASE}:${{ github.sha }}"
+          if [ "${{ github.ref_name }}" = "main" ] || [ "${{ github.ref_name }}" = "master" ]; then
+            TAGS="${TAGS},${IMAGE_BASE}:latest"
+          fi
+          TAGS="${TAGS},${IMAGE_BASE}:${{ github.ref_name }}-${{ github.sha }}"
+          
+          echo "tags=${TAGS}" >> $GITHUB_OUTPUT
+          echo "image=${IMAGE_BASE}:${{ github.sha }}" >> $GITHUB_OUTPUT
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -47,31 +63,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata for build_service
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ steps.repo.outputs.name }}/build_service
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
-
       - name: Build and push build_service
         uses: docker/build-push-action@v5
         with:
           context: .
           file: build_service/Dockerfile
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.tags.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Set output
         id: image
-        run: echo "image=${{ env.REGISTRY }}/${{ steps.repo.outputs.name }}/build_service:${{ github.sha }}" >> $GITHUB_OUTPUT
+        run: echo "image=${{ steps.tags.outputs.image }}" >> $GITHUB_OUTPUT
 
   build-services:
     name: Build Services
@@ -102,6 +106,21 @@ jobs:
         id: repo
         run: echo "name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
+      - name: Generate image tags
+        id: tags
+        run: |
+          REPO_LOWERCASE=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')
+          IMAGE_BASE="${{ env.REGISTRY }}/${REPO_LOWERCASE}/${{ matrix.service.name }}"
+          
+          # Generate tags
+          TAGS="${IMAGE_BASE}:${{ github.sha }}"
+          if [ "${{ github.ref_name }}" = "main" ] || [ "${{ github.ref_name }}" = "master" ]; then
+            TAGS="${TAGS},${IMAGE_BASE}:latest"
+          fi
+          TAGS="${TAGS},${IMAGE_BASE}:${{ github.ref_name }}-${{ github.sha }}"
+          
+          echo "tags=${TAGS}" >> $GITHUB_OUTPUT
+
       - name: Check if service should be built
         id: should_build
         run: |
@@ -128,18 +147,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        if: steps.should_build.outputs.build == 'true'
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ steps.repo.outputs.name }}/${{ matrix.service.name }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
-
       - name: Build and push ${{ matrix.service.name }}
         if: steps.should_build.outputs.build == 'true'
         uses: docker/build-push-action@v5
@@ -148,8 +155,7 @@ jobs:
           file: ${{ matrix.service.dockerfile }}
           build-args: BUILD_SERVICE_IMAGE=${{ needs.build-base.outputs.build-service-image }}
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.tags.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
