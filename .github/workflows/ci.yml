@@ -116,7 +116,7 @@ jobs:
         if: matrix.needs_build_service == true
         run: |
           docker buildx build \
-            --tag weather-build-service:latest \
+            --tag ghcr.io/cloud-native-projekt/weather-service/build_service:latest \
             --file build_service/Dockerfile \
             --load \
             .
@@ -124,7 +124,7 @@ jobs:
       - name: Build ${{ matrix.service }}
         run: |
           if [ "${{ matrix.needs_build_service }}" = "true" ]; then
-            BUILD_ARGS="--build-arg BUILD_SERVICE_IMAGE=weather-build-service:latest"
+            BUILD_ARGS="--build-arg BUILD_SERVICE_IMAGE=ghcr.io/cloud-native-projekt/weather-service/build_service:latest"
           else
             BUILD_ARGS=""
           fi
