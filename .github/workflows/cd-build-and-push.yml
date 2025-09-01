@@ -82,6 +82,8 @@ jobs:
             dockerfile: forecast_build_service/Dockerfile
           - name: weekly_maintenance_service
             dockerfile: weekly_maintenance_service/Dockerfile
+          - name: api_service
+            dockerfile: api_service/Dockerfile
 
     steps:
       - name: Checkout code

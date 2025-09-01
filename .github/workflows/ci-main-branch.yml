@@ -102,6 +102,9 @@ jobs:
           - service: weekly_maintenance_service
             dockerfile: weekly_maintenance_service/Dockerfile
             needs_build_service: true
+          - service: api_service
+            dockerfile: api_service/Dockerfile
+            needs_build_service: true
 
     steps:
       - name: Checkout code
