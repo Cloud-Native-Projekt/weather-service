@@ -60,7 +60,7 @@ jobs:
 
       - name: Set output
         id: image
-        run: echo "image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/build_service:${{ github.sha }}" >> $GITHUB_OUTPUT
+        run: echo "image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/build_service:latest" >> $GITHUB_OUTPUT
 
   build-services:
     name: Build Services
