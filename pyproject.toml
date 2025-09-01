@@ -10,6 +10,7 @@ package-mode = false
 python = ">=3.13"
 openmeteo_client = { path = "openmeteo_client", develop = true }
 weather_models = { path = "weather_models", develop = true }
+frontend_api = { path = "frontend_api", develop = true }
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.1"
