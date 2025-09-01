@@ -1,4 +1,5 @@
-FROM weather-build-service:1.0.0 AS wheels
+ARG BUILD_SERVICE_IMAGE=weather-build-service:1.0.0
+FROM ${BUILD_SERVICE_IMAGE} AS wheels
 FROM python:3.13.7-trixie AS builder
 
 WORKDIR /app

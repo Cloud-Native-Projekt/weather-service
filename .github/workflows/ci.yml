@@ -1,0 +1,142 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - 'feature/**'
+  pull_request:
+    branches:
+      - main
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: '2.1'
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Load cached venv
+        id: cached-poetry-dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-3.13-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: poetry install --no-interaction --no-root
+
+      - name: Install project
+        run: poetry install --no-interaction
+
+      - name: Run tests
+        run: poetry run pytest tests/ -v
+
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'python' ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{matrix.language}}"
+
+  dry-build:
+    name: Dry Build Docker Images
+    runs-on: ubuntu-latest
+    needs: [test, codeql]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: build_service
+            dockerfile: build_service/Dockerfile
+            needs_build_service: false
+          - service: bootstrap_service
+            dockerfile: bootstrap_service/Dockerfile
+            needs_build_service: true
+          - service: daily_maintenance_service
+            dockerfile: daily_maintenance_service/Dockerfile
+            needs_build_service: true
+          - service: forecast_service
+            dockerfile: forecast_service/Dockerfile
+            needs_build_service: true
+          - service: forecast_build_service
+            dockerfile: forecast_build_service/Dockerfile
+            needs_build_service: true
+          - service: weekly_maintenance_service
+            dockerfile: weekly_maintenance_service/Dockerfile
+            needs_build_service: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build build_service (dependency)
+        if: matrix.needs_build_service == true
+        run: |
+          docker buildx build \
+            --tag weather-build-service:latest \
+            --file build_service/Dockerfile \
+            --load \
+            .
+
+      - name: Build ${{ matrix.service }}
+        run: |
+          if [ "${{ matrix.needs_build_service }}" = "true" ]; then
+            BUILD_ARGS="--build-arg BUILD_SERVICE_IMAGE=weather-build-service:latest"
+          else
+            BUILD_ARGS=""
+          fi
+          
+          docker buildx build \
+            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}:${{ github.sha }} \
+            --file ${{ matrix.dockerfile }} \
+            $BUILD_ARGS \
+            .
+
+      - name: Test image runs
+        run: |
+          # Basic smoke test - check if the image was built successfully
+          docker images ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}:${{ github.sha }}
