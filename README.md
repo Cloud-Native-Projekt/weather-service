@@ -21,6 +21,7 @@ The Weather Service is a modular, containerized system for weather data manageme
 - **[`weekly_maintenance_service`](weekly_maintenance_service/)**: Weekly data aggregation
 - **[`forecast_build_service`](forecast_build_service/)**: Machine learning model training
 - **[`forecast_service`](forecast_service/)**: Weather forecast generation
+- **[`frontend_api`](frontend_api/)**: RESTful API for weather data access and consumption
 
 ### Configuration
 
@@ -52,6 +53,15 @@ The Weather Service is a modular, containerized system for weather data manageme
 - **Model Persistence**: Save and load trained models using joblib
 - **Geographic Specialization**: Tailored forecasts for each coordinate
 
+### RESTful API
+
+- **Weather Data Access**: RESTful endpoints for daily and weekly weather data
+- **Smart Data Routing**: Automatic routing between historical and forecast data
+- **Location Discovery**: Find available data points and geographic coverage
+- **Flexible Queries**: Support for single dates, date ranges, and multiple date selections
+- **Nearest Location Matching**: Euclidean distance-based coordinate matching
+- **Health Monitoring**: Database connectivity and service status endpoints
+
 ### Service Infrastructure
 
 - **Containerized Services**: Docker-based deployment with service isolation
@@ -60,61 +70,13 @@ The Weather Service is a modular, containerized system for weather data manageme
 - **Error Handling**: Comprehensive error management with detailed logging
 - **Session Management**: Proper database connection handling and cleanup
 
-## Quick Start
-
-### Prerequisites
+## Prerequisites
 
 - Docker and Docker Compose
 - PostgreSQL database
 - Python 3.13+ (for local development)
 
-### Environment Variables
-
-```bash
-# Database Configuration
-POSTGRES_USER=weatheruser
-POSTGRES_PASSWORD=weatherpass
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5432
-POSTGRES_DB=weatherdb
-```
-
-### Building Core Packages
-
-```bash
-# Build Python wheels for core packages
-cd build_service
-docker build --target weather-build-service -t weather-build .
-docker create --name wheel-extractor weather-build
-docker cp wheel-extractor:/wheels ./dist/
-docker rm wheel-extractor
-```
-
-### Service Deployment
-
-```bash
-# Bootstrap initial data
-docker build -t bootstrap-service bootstrap_service/
-docker run --env-file .env bootstrap-service
-
-# Start maintenance services
-docker build -t daily-maintenance daily_maintenance_service/
-docker build -t weekly-maintenance weekly_maintenance_service/
-
-# Build and run forecast services
-docker build -t forecast-build forecast_build_service/
-docker build -t forecast-service forecast_service/
-
-# Schedule services (example with cron)
-# Daily: 0 2 * * * docker run --env-file .env daily-maintenance
-# Weekly: 0 3 * * 3 docker run --env-file .env weekly-maintenance
-# Model Build: 0 4 1 * * docker run --env-file .env forecast-build
-# Forecasts: 0 5 * * * docker run --env-file .env forecast-service
-```
-
 ## System Workflow
-
-### Data Flow Pipeline
 
 ### Data Flow Pipeline
 
@@ -129,6 +91,11 @@ graph TD
     G --> H[Weekly Forecast Models]
     H --> I[Forecast Generation]
     I --> J[Weekly Weather Forecast]
+    C --> K[Frontend API]
+    D --> K
+    F --> K
+    J --> K
+    K --> L[Client Applications]
 ```
 
 ### Service Orchestration
@@ -138,8 +105,57 @@ graph TD
 3. **Weekly Operations**: Data aggregation and weekly summary creation
 4. **Model Training**: Location-specific forecast model building
 5. **Forecast Generation**: Weekly weather predictions using trained models
+6. **API Access**: RESTful data access layer for applications and users
 
 ## API Reference
+
+### Frontend API Endpoints
+
+The Weather Service provides a comprehensive RESTful API for accessing weather data:
+
+#### Health Check
+- `GET /health` - Service and database health status
+
+#### Data Discovery
+- `GET /locations/{table}` - Available geographic locations
+- `GET /timespan/{table}` - Available date/time ranges
+- `GET /metrics/{table}` - Available weather metrics
+
+#### Weather Data Retrieval
+- `GET /daily/{datum}/{latitude}/{longitude}/{metrics}` - Daily weather data
+- `GET /weekly/{calendar_week}/{latitude}/{longitude}/{metrics}` - Weekly weather data
+
+#### API Usage Examples
+
+```bash
+# Get health status
+curl http://localhost:8000/health
+
+# Get available locations for daily history
+curl http://localhost:8000/locations/daily_history
+
+# Get daily weather data for Berlin
+curl http://localhost:8000/daily/2023-01-01/52.5/13.4/temperature_2m_mean,precipitation_sum
+
+# Get weekly weather data with date range
+curl http://localhost:8000/weekly/2023-15:2023-20/52.5/13.4/all
+```
+
+#### Data Formats
+
+**Date Parameters**:
+- Single date: `2023-01-01`
+- Multiple dates: `2023-01-01,2023-01-02,2023-01-03`
+- Date range: `2023-01-01:2023-01-31`
+
+**Calendar Week Parameters**:
+- Single week: `2023-15`
+- Multiple weeks: `2023-15,2023-16,2023-17`
+- Week range: `2023-15:2023-20`
+
+**Metrics Parameter**:
+- All metrics: `all`
+- Specific metrics: `temperature_2m_mean,precipitation_sum,wind_speed_10m_mean`
 
 ### Core Packages
 
@@ -289,6 +305,17 @@ Generates weekly weather forecasts:
 - Generates configurable horizon predictions
 - Updates WeeklyWeatherForecast table
 
+### Frontend API Service
+
+Provides RESTful access to weather data:
+
+- **Smart Data Routing**: Automatically routes between historical and forecast data based on cutoff dates
+- **Location Matching**: Finds nearest available data points using Euclidean distance
+- **Flexible Queries**: Supports single dates, date ranges, multiple dates, and calendar weeks
+- **Data Discovery**: Endpoints for exploring available locations, time ranges, and metrics
+- **Health Monitoring**: Database connectivity and service status checks
+- **FastAPI Integration**: Automatic OpenAPI/Swagger documentation generation
+
 ## Performance Characteristics
 
 ### Rate Limiting
@@ -339,6 +366,10 @@ poetry build
 
 cd ../openmeteo_client
 poetry build
+
+# Start Frontend API for development
+cd ../frontend_api
+poetry build
 ```
 
 ### Docker Compose Development
@@ -351,10 +382,13 @@ docker compose up -d database
 docker compose build build-service
 
 # Build services
-docker compose build bootstrap-service forecast-build-service forecast-service daily-maintenance-service weekly-maintenance-service
+docker compose build bootstrap-service forecast-build-service forecast-service daily-maintenance-service weekly-maintenance-service frontend-api
 
 # Run bootstrap service to initialize data
 docker compose up bootstrap-service
+
+# Start frontend API
+docker compose up -d frontend-api
 
 # Run individual services
 docker compose up forecast-build-service
@@ -378,6 +412,7 @@ FORECAST_BUILD_SERVICE_VERSION=latest
 WEATHER_FORECAST_SERVICE_VERSION=latest
 DAILY_MAINTENANCE_SERVICE_VERSION=latest
 WEEKLY_MAINTENANCE_SERVICE_VERSION=latest
+FRONTEND_API_VERSION=latest
 
 # Database configuration (matches docker-compose.yaml)
 POSTGRES_HOST=localhost
@@ -415,6 +450,13 @@ CONFIG_FILE=dev_config.json
 - **statsmodels**: Statistical modeling and VAR implementation
 - **openmeteo_requests**: Official OpenMeteo SDK
 
+### API Dependencies
+
+- **FastAPI**: Web framework for building APIs
+- **Pydantic**: Data validation and serialization
+- **Uvicorn**: ASGI server for FastAPI applications
+- **NumPy**: Numerical operations for location matching
+
 ### Service Dependencies
 
 - **Docker**: Container runtime for service deployment
@@ -432,6 +474,8 @@ CONFIG_FILE=dev_config.json
 - Implement request caching for repeated queries
 - Use geographic batching for multi-location requests
 - Monitor rate limit usage and adjust request patterns
+- FastAPI automatic OpenAPI documentation generation
+- Nearest location matching with Euclidean distance calculation
 
 ---
 

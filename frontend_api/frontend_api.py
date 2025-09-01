@@ -1,3 +1,51 @@
+"""
+Weather Service Frontend API
+
+A RESTful FastAPI application that provides access to weather data stored in a PostgreSQL database.
+This service acts as the frontend API layer for retrieving historical and forecast weather data
+at daily and weekly aggregation levels.
+
+Features:
+    - Health check endpoint for monitoring database connectivity
+    - Location discovery for available weather data points
+    - Time span queries to determine data availability ranges
+    - Metrics discovery for available weather measurements
+    - Daily weather data retrieval (single date, multiple dates, date ranges)
+    - Weekly weather data retrieval (single week, multiple weeks, week ranges)
+    - Automatic routing between historical and forecast data based on cutoff dates
+    - Nearest location matching using Euclidean distance calculation
+
+Endpoints:
+    GET /health - Service and database health status
+    GET /locations/{table} - Available geographic locations for a table
+    GET /timespan/{table} - Available date/time ranges for a table
+    GET /metrics/{table} - Available weather metrics for a table
+    GET /daily/{datum}/{latitude}/{longitude}/{metrics} - Daily weather data
+    GET /weekly/{calendar_week}/{latitude}/{longitude}/{metrics} - Weekly weather data
+
+Supported Tables:
+    - daily_history: Historical daily weather observations
+    - daily_forecast: Future daily weather predictions
+    - weekly_history: Historical weekly weather aggregations
+    - weekly_forecast: Future weekly weather aggregations and additional predictions
+
+Data Flow:
+    The API automatically determines whether to query historical or forecast tables
+    based on configurable cutoff dates. For requests spanning multiple time periods,
+    the service combines results from both historical and forecast data sources.
+
+Dependencies:
+    - FastAPI: Web framework for building APIs
+    - SQLAlchemy: Database ORM for PostgreSQL interactions
+    - Pydantic: Data validation and serialization
+    - NumPy: Numerical operations for location matching
+    - weather_models: Custom database models and connection management
+
+Configuration:
+    - HISTORY_CUTOFF: Date boundary between historical and forecast data
+    - WEEKLY_HISTORY_CUTOFF: Week boundary for weekly data routing
+"""
+
 import re
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
