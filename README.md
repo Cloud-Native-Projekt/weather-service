@@ -268,6 +268,7 @@ Initializes the weather service database and populates it with historical data:
 - Fetches current forecast data
 - Generates weekly aggregations from daily data
 - Prevents accidental data overwrites via bootstrap detection
+- Supports bootstrapping from a file or directly from API
 
 ### Daily Maintenance Service
 
@@ -424,6 +425,10 @@ POSTGRES_PASSWORD=pw
 
 # Open Meteo client config file
 CONFIG_FILE=dev_config.json
+
+# Bootstrapping behavior
+BOOTSTRAP_MODE=from_file
+BOOTSTRAP_FILE=/path/to/file # Can be omitted if default path is used
 ```
 
 ### Adding New Services

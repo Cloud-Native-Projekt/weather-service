@@ -37,7 +37,7 @@ Geographic Processing:
 - Coordinate grid generation from bounding boxes
 - Multi-location request optimization
 - Spatial data integrity across all operations
-- Configurable grid resolution (default 0.5° spacing)
+- Configurable grid resolution (default 2.0° spacing)
 
 Temporal Management:
 - Automatic date range calculations
@@ -377,7 +377,7 @@ class OpenMeteoClientConfig:
         """
         return date.today() - timedelta(days=2)
 
-    def __create_locations(self, bounding_box: Any, step: float = 0.5) -> NDArray:
+    def __create_locations(self, bounding_box: Any, step: float = 2.0) -> NDArray:
         """Generate coordinate grid from geographic bounding box.
 
         Creates a regular grid of latitude and longitude coordinates within the
@@ -389,7 +389,7 @@ class OpenMeteoClientConfig:
                 Expected schema: {"north": float, "south": float, "east": float, "west": float}
                 All values should be in decimal degrees.
             step (float, optional): Grid spacing in decimal degrees for both
-                latitude and longitude. Defaults to 0.5 degrees (~55km at equator).
+                latitude and longitude. Defaults to 2 degrees.
 
         Returns:
             NDArray: 2D numpy array where each row contains [latitude, longitude]

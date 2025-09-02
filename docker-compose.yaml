@@ -45,6 +45,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       CONFIG_FILE: ${CONFIG_FILE}
+      BOOTSTRAP_MODE: ${BOOTSTRAP_MODE}
     depends_on:
       database:
         condition: service_healthy
