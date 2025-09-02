@@ -210,3 +210,6 @@ __marimo__/
 
 # Dev Config File
 dev_config.json
+
+# Temp folder
+temp

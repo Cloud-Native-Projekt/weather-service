@@ -6,9 +6,9 @@ services:
     container_name: weather-db
     restart: always
     environment:
-      POSTGRES_DB: weatherdb
-      POSTGRES_USER: myuser
-      POSTGRES_PASSWORD: pw
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - data:/var/lib/postgresql/data
     ports:
@@ -26,23 +26,25 @@ services:
       dockerfile: build_service/Dockerfile
       target: weather-build-service
     container_name: weather-build-service
-    image: weather-build-service:${BUILD_SERVICE_VERSION}
+    image: ${BUILD_SERVICE_IMAGE}:${BUILD_SERVICE_VERSION}
     profiles: [build-only]
 
   bootstrap-service:
     build:
       context: .
       dockerfile: bootstrap_service/Dockerfile
+      args:
+        BUILD_SERVICE_IMAGE: ${BUILD_SERVICE_IMAGE}:${BUILD_SERVICE_VERSION}
     container_name: weather-bootstrap-service
     image: weather-bootstrap-service:${BOOTSTRAP_SERVICE_VERSION}
     restart: no
     environment:
-      POSTGRES_HOST: database
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: weatherdb
-      POSTGRES_USER: myuser
-      POSTGRES_PASSWORD: pw
-      CONFIG_FILE: dev_config.json
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      CONFIG_FILE: ${CONFIG_FILE}
     depends_on:
       database:
         condition: service_healthy
@@ -52,16 +54,18 @@ services:
     build:
       context: .
       dockerfile: forecast_build_service/Dockerfile
+      args:
+        BUILD_SERVICE_IMAGE: ${BUILD_SERVICE_IMAGE}:${BUILD_SERVICE_VERSION}
     container_name: forecast-build-service
     image: forecast-build-service:${FORECAST_BUILD_SERVICE_VERSION}
     restart: no
     environment:
-      POSTGRES_HOST: database
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: weatherdb
-      POSTGRES_USER: myuser
-      POSTGRES_PASSWORD: pw
-      CONFIG_FILE: dev_config.json
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      CONFIG_FILE: ${CONFIG_FILE}
     volumes:
       - forecast_models:/app/models
     depends_on:
@@ -73,15 +77,17 @@ services:
     build:
       context: .
       dockerfile: forecast_service/Dockerfile
+      args:
+        BUILD_SERVICE_IMAGE: ${BUILD_SERVICE_IMAGE}:${BUILD_SERVICE_VERSION}
     container_name: weather-forecast-service
     image: weather-forecast-service:${WEATHER_FORECAST_SERVICE_VERSION}
     restart: no
     environment:
-      POSTGRES_HOST: database
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: weatherdb
-      POSTGRES_USER: myuser
-      POSTGRES_PASSWORD: pw
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - forecast_models:/app/models
     depends_on:
@@ -93,16 +99,18 @@ services:
     build:
       context: .
       dockerfile: daily_maintenance_service/Dockerfile
+      args:
+        BUILD_SERVICE_IMAGE: ${BUILD_SERVICE_IMAGE}:${BUILD_SERVICE_VERSION}
     container_name: daily-weather-maintenance-service
     image: daily-weather-maintenance-service:${DAILY_MAINTENANCE_SERVICE_VERSION}
     restart: no
     environment:
-      POSTGRES_HOST: database
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: weatherdb
-      POSTGRES_USER: myuser
-      POSTGRES_PASSWORD: pw
-      CONFIG_FILE: dev_config.json
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      CONFIG_FILE: ${CONFIG_FILE}
     depends_on:
       database:
         condition: service_healthy
@@ -112,16 +120,18 @@ services:
     build:
       context: .
       dockerfile: weekly_maintenance_service/Dockerfile
+      args:
+        BUILD_SERVICE_IMAGE: ${BUILD_SERVICE_IMAGE}:${BUILD_SERVICE_VERSION}
     container_name: weekly-weather-maintenance-service
     image: weekly-weather-maintenance-service:${WEEKLY_MAINTENANCE_SERVICE_VERSION}
     restart: no
     environment:
-      POSTGRES_HOST: database
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: weatherdb
-      POSTGRES_USER: myuser
-      POSTGRES_PASSWORD: pw
-      CONFIG_FILE: dev_config.json
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      CONFIG_FILE: ${CONFIG_FILE}
     depends_on:
       database:
         condition: service_healthy
@@ -131,17 +141,19 @@ services:
     build:
       context: .
       dockerfile: api_service/Dockerfile
+      args:
+        BUILD_SERVICE_IMAGE: ${BUILD_SERVICE_IMAGE}:${BUILD_SERVICE_VERSION}
     container_name: weather-api-service
     image: weather-api-service:${WEATHER_API_SERVICE_VERSION}
     restart: no
     ports:
       - "8000:8000"
     environment:
-      POSTGRES_HOST: database
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: weatherdb
-      POSTGRES_USER: myuser
-      POSTGRES_PASSWORD: pw
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     depends_on:
       database:
         condition: service_healthy
