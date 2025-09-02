@@ -406,14 +406,14 @@ Create a `.env` file with development settings:
 
 ```bash
 # Docker Compose service versions
-BUILD_SERVICE_VERSION=1.0.0
-BUILD_SERVICE_IMAGE=weather-build-service
 BOOTSTRAP_SERVICE_VERSION=1.0.0
 DAILY_MAINTENANCE_SERVICE_VERSION=1.0.0
 WEEKLY_MAINTENANCE_SERVICE_VERSION=1.0.0
 FORECAST_BUILD_SERVICE_VERSION=1.0.0
 WEATHER_FORECAST_SERVICE_VERSION=1.0.0
 WEATHER_API_SERVICE_VERSION=1.0.0
+BUILD_SERVICE_VERSION=1.0.0
+BUILD_SERVICE_IMAGE=weather-build-service
 
 # Database configuration (matches docker-compose.yaml)
 POSTGRES_HOST=localhost
