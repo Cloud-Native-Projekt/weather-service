@@ -1,13 +1,13 @@
 {
-    "history_start_date": "2001-01-01",
+    "history_start_date": "2005-01-01",
     "history_end_date": "latest",
     "forecast_days": 16,
     "forecast_past_days": 1,
     "bounding_box": {
-        "north": 71.0,
-        "south": 36.0,
-        "west": 9.0,
-        "east": 68.0
+        "north": 55.5,
+        "south": 47.0,
+        "west": 5.0,
+        "east": 16.5
     },
     "metrics": [
         "temperature_2m_mean",
