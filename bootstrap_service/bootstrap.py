@@ -7,7 +7,7 @@ forecast data when the system is first deployed or when database initialization 
 Bootstrap Operations:
 - Creates all required database tables if they don't exist
 - Truncates existing tables to ensure clean initialization
-- Retrieves comprehensive historical weather data from OpenMeteo Archive API
+- Retrieves comprehensive historical weather data from OpenMeteo Archive API or from CSV file
 - Fetches current forecast data from OpenMeteo Forecast API
 - Generates weekly aggregations from daily historical data
 - Populates all weather data tables with fresh data
@@ -15,6 +15,11 @@ Bootstrap Operations:
 The bootstrap service runs conditionally based on the WeatherDatabase.bootstrap property,
 which determines if the database requires initialization. This prevents accidental data
 overwrites during routine operations while ensuring proper setup for new deployments.
+
+Configuration:
+The service supports two bootstrap modes controlled by environment variables:
+- BOOTSTRAP_MODE: Set to "api" for API-based data retrieval or "from_file" for CSV file loading
+- BOOTSTRAP_FILE: Path to CSV file when using file-based bootstrap mode (defaults to data.csv)
 
 Data Tables Populated:
 - DailyWeatherHistory: Historical daily weather observations
@@ -38,16 +43,24 @@ Usage:
     or when database reinitialization is required. The bootstrap logic automatically
     detects whether initialization is needed.
 
+Environment Variables:
+    BOOTSTRAP_MODE: "api" or "from_file" (default: "from_file")
+    BOOTSTRAP_FILE: Path to CSV file for file-based bootstrap (default: ./data.csv)
+
 Example:
     python bootstrap.py
 
 Note:
     The bootstrap process may take considerable time depending on the configured
     geographic area and historical data range due to API rate limiting and the
-    volume of data being processed.
+    volume of data being processed. File-based bootstrap is significantly faster
+    and is recommended for development environments.
 """
 
 import logging
+import os
+
+import pandas as pd
 
 from openmeteo_client import (
     OpenMeteoArchiveClient,
@@ -61,6 +74,11 @@ from weather_models import (
     WeatherDatabase,
     WeeklyWeatherForecast,
     WeeklyWeatherHistory,
+)
+
+BOOTSTRAP_MODE = os.getenv("BOOTSTRAP_MODE", "from_file")
+BOOTSTRAP_FILE = os.getenv(
+    "BOOTSTRAP_FILE", os.path.join(os.path.dirname(__file__), "data.csv")
 )
 
 if __name__ == "__main__":
@@ -84,17 +102,26 @@ if __name__ == "__main__":
 
             config = OpenMeteoClientConfig(create_from_file=True)
 
-            ArchiveClient = OpenMeteoArchiveClient(config)
-            historic_data_daily = ArchiveClient.main()
-            history_orm_objects_daily = database.create_orm_objects(
-                data=historic_data_daily, table=DailyWeatherHistory
-            )
+            if BOOTSTRAP_MODE == "api":
+                ArchiveClient = OpenMeteoArchiveClient(config)
+                historic_data_daily = ArchiveClient.main()
+                history_orm_objects_daily = database.create_orm_objects(
+                    data=historic_data_daily, table=DailyWeatherHistory
+                )
+            else:
+                logger.info("Bootstrapping historic date from file...")
+                historic_data_daily = pd.read_csv(BOOTSTRAP_FILE)
+                history_orm_objects_daily = database.create_orm_objects(
+                    data=historic_data_daily, table=DailyWeatherHistory
+                )
+            database.write_data(history_orm_objects_daily)
 
             ForecastClient = OpenMeteoForecastClient(config)
             forecast_data_daily = ForecastClient.main()
             forecast_orm_objects_daily = database.create_orm_objects(
                 data=forecast_data_daily, table=DailyWeatherForecast
             )
+            database.write_data(forecast_orm_objects_daily)
 
             historic_data_weekly, _, historic_data_daily_tail = (
                 WeeklyTableConstructor().main(historic_data_daily)
@@ -102,9 +129,6 @@ if __name__ == "__main__":
             history_orm_objects_weekly = database.create_orm_objects(
                 data=historic_data_weekly, table=WeeklyWeatherHistory
             )
-
-            database.write_data(history_orm_objects_daily)
-            database.write_data(forecast_orm_objects_daily)
             database.write_data(history_orm_objects_weekly)
 
             logger.info("Bootstrap routine completed successfully!")
