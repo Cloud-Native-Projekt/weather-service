@@ -268,6 +268,7 @@ Initializes the weather service database and populates it with historical data:
 - Fetches current forecast data
 - Generates weekly aggregations from daily data
 - Prevents accidental data overwrites via bootstrap detection
+- Supports bootstrapping from a file or directly from API
 
 ### Daily Maintenance Service
 
@@ -406,13 +407,14 @@ Create a `.env` file with development settings:
 
 ```bash
 # Docker Compose service versions
-BUILD_SERVICE_VERSION=latest
-BOOTSTRAP_SERVICE_VERSION=latest
-FORECAST_BUILD_SERVICE_VERSION=latest
-WEATHER_FORECAST_SERVICE_VERSION=latest
-DAILY_MAINTENANCE_SERVICE_VERSION=latest
-WEEKLY_MAINTENANCE_SERVICE_VERSION=latest
-FRONTEND_API_VERSION=latest
+BOOTSTRAP_SERVICE_VERSION=1.0.0
+DAILY_MAINTENANCE_SERVICE_VERSION=1.0.0
+WEEKLY_MAINTENANCE_SERVICE_VERSION=1.0.0
+FORECAST_BUILD_SERVICE_VERSION=1.0.0
+WEATHER_FORECAST_SERVICE_VERSION=1.0.0
+WEATHER_API_SERVICE_VERSION=1.0.0
+BUILD_SERVICE_VERSION=1.0.0
+BUILD_SERVICE_IMAGE=weather-build-service
 
 # Database configuration (matches docker-compose.yaml)
 POSTGRES_HOST=localhost
@@ -420,7 +422,13 @@ POSTGRES_PORT=5432
 POSTGRES_DB=weatherdb
 POSTGRES_USER=myuser
 POSTGRES_PASSWORD=pw
+
+# Open Meteo client config file
 CONFIG_FILE=dev_config.json
+
+# Bootstrapping behavior
+BOOTSTRAP_MODE=from_file
+BOOTSTRAP_FILE=/path/to/file # Can be omitted if default path is used
 ```
 
 ### Adding New Services
