@@ -109,7 +109,7 @@ if __name__ == "__main__":
                     data=historic_data_daily, table=DailyWeatherHistory
                 )
             else:
-                logger.info("Bootstrapping historic date from file...")
+                logger.info("Bootstrapping historic data from file...")
                 historic_data_daily = pd.read_csv(BOOTSTRAP_FILE)
                 history_orm_objects_daily = database.create_orm_objects(
                     data=historic_data_daily, table=DailyWeatherHistory
