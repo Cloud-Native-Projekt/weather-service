@@ -299,7 +299,7 @@ class OpenMeteoClientConfig:
 
         Supported kwargs:
             history_start_date (str | date): Start date for historical data ("YYYY-MM-DD" or date object)
-            history_end_date (str | date): End date for historical data ("latest", "YYYY-MM-DD" or date object)
+            history_end_date (str | date): End date for historical data ("latest", "YYYY-MM-DD", or date object)
             forecast_days (int): Number of forecast days (1-16 inclusive)
             forecast_past_days (int): Number of past days in forecast (1-5 inclusive)
             bounding_box (Dict[str, float]): Geographic boundaries with keys: north, south, east, west
