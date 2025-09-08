@@ -17,6 +17,7 @@ API Client Architecture:
 - OpenMeteoClient: Abstract base class with common functionality
 - OpenMeteoArchiveClient: Historical weather data retrieval with year-based chunking
 - OpenMeteoForecastClient: Weather forecast data with configurable horizons
+- OpenMeteoAPIBackoff: Custom rate limit backoff strategy
 - Automatic rate limiting across multiple time windows (minutely/hourly/daily)
 
 Data Processing Pipeline:
@@ -30,20 +31,19 @@ Key Features:
 Rate Limiting System:
 - Multi-tier rate limiting (600/min, 5,000/hour, 10,000/day)
 - Automatic backoff with progressive delays (61s, 1h, 24h)
-- API cost tracking for endpoint pricing
 - Request time estimation for batch operations
 
 Geographic Processing:
 - Coordinate grid generation from bounding boxes
-- Multi-location request optimization
+- Multi-location request optimization with configurable spacing (default 2.0°)
 - Spatial data integrity across all operations
-- Configurable grid resolution (default 2.0° spacing)
+- Geographic metadata preservation through processing pipeline
 
 Temporal Management:
-- Automatic date range calculations
-- Week boundary detection and alignment
-- ISO calendar week numbering
-- Partial week handling for data integrity
+- Automatic date range calculations with validation
+- Week boundary detection and alignment for aggregation
+- ISO calendar week numbering for standardization
+- Partial week handling for data integrity preservation
 
 API Endpoints Supported:
 
@@ -51,27 +51,27 @@ OpenMeteo Archive API:
 - Endpoint: https://archive-api.open-meteo.com/v1/archive
 - Purpose: Historical weather observations (2+ day delay)
 - Cost: 31.3 API units per location-year
-- Optimization: Location- and year-based request chunking
+- Optimization: Year-based request chunking for large date ranges
 
 OpenMeteo Forecast API:
 - Endpoint: https://api.open-meteo.com/v1/forecast
 - Purpose: Weather predictions (1-16 days ahead)
 - Cost: 1.2 API units per location
-- Features: Optional past days inclusion (1-5 days)
+- Features: Optional past days inclusion (1-5 days) for data continuity
 
 Configuration Sources:
 
 JSON Configuration Files:
-- Centralized parameter management
-- Environment-specific configurations
-- Schema validation and error handling
-- Default parameter definitions
+- Centralized parameter management with schema validation
+- Environment-specific configurations (development, production)
+- Default parameter definitions with override capabilities
+- Error handling for malformed configurations
 
 Runtime Parameters:
-- Direct kwargs parameter passing
-- File override capabilities
-- Flexible hybrid configuration
-- Dynamic parameter adjustment
+- Direct kwargs parameter passing for dynamic configuration
+- File override capabilities for hybrid configuration
+- Flexible parameter adjustment for specific use cases
+- Parameter validation with descriptive error messages
 
 Usage Patterns:
 
@@ -118,31 +118,33 @@ Database Integration:
 - Direct compatibility with WeatherDatabase ORM objects
 - Standardized data formats for persistence
 - Automatic geographic and temporal indexing support
-
-Service Architecture:
-- Bootstrap service: Initial data population
-- Maintenance service: Daily/weekly data updates
-- Rate limiting coordination across service instances
+- Schema alignment with weather_models data structures
 
 Error Handling:
-- Comprehensive parameter validation
-- API response verification
-- Graceful degradation with partial failures
-- Detailed logging for monitoring and debugging
+- Comprehensive parameter validation with descriptive messages
+- API response verification and structure validation
+- Graceful degradation with partial failure recovery
+- Detailed logging for monitoring and debugging support
 
-Performance Characteristics:
 
-Optimization Features:
-- Request caching with 24-hour expiration
-- Automatic retry with exponential backoff
-- Geographic batch processing
-- Year-based chunking for large historical ranges
+Rate Limiting Implementation:
+- OpenMeteoAPIBackoff: Custom backoff strategy with progressive delays
+- Exception-based retry logic with limit type detection
+- Automatic wait period calculation based on limit type:
+  * Minutely limits: 61 second backoff
+  * Hourly limits: 3,601 second backoff (1 hour + buffer)
+  * Daily limits: 86,401 second backoff (24 hours + buffer)
 
-Scalability Considerations:
-- Rate limiting prevents API quota violations
-- Memory-efficient streaming for large datasets
-- Geographic partitioning for parallel processing
-- Configurable grid resolution for performance tuning
+Weekly Aggregation Features:
+- WeeklyTableConstructor: Meteorologically-aware aggregation
+- Complete week boundary detection (Monday to Sunday)
+- Statistical methods appropriate for each weather variable:
+  * Temperature: Mean, max, min preservation
+  * Precipitation: Sum totals and duration aggregation
+  * Wind: Speed distribution statistics
+  * Cloud cover: Pattern variation capture
+- ISO calendar week numbering for standardization
+- Partial week separation for data integrity
 
 Dependencies:
 - openmeteo_requests: Official OpenMeteo SDK for API communication
@@ -151,11 +153,16 @@ Dependencies:
 - numpy: Numerical computations and array operations
 - requests_cache: HTTP caching for performance optimization
 - retry_requests: Automatic retry logic for resilient operations
+- tenacity: Advanced retry and backoff strategies
+
+Environment Variables:
+- CONFIG_FILE: JSON configuration file name (default: config.json)
 
 Note:
-This module is designed as the primary interface for all OpenMeteo API interactions
-within the weather service. It provides the foundation for data retrieval, processing,
-and aggregation across the entire system architecture.
+This module serves as the primary interface for all OpenMeteo API interactions
+within the weather service ecosystem. It provides the foundation for data retrieval,
+processing, and aggregation across the entire system architecture, with particular
+emphasis on reliability, performance, and scalability.
 """
 
 import json
