@@ -684,9 +684,7 @@ class OpenMeteoAPIBackoff(wait_base):
                 - 86,401 seconds for daily limits
                 - 300 seconds for unknown/unrecognized limit types
         """
-        last_exception = None
-        if retry_state.outcome is not None and hasattr(retry_state.outcome, "exception"):
-            last_exception = retry_state.outcome.exception()
+        last_exception = retry_state.outcome.exception() if retry_state.outcome and hasattr(retry_state.outcome, "exception") else None
         if isinstance(last_exception, OpenMeteoRequestsError):
             msg = str(last_exception).lower()
             if "minutely" in msg:
