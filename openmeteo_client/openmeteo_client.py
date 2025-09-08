@@ -701,11 +701,6 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
     including automatic rate limiting, request management, and response processing. It handles
     the common functionality shared between different OpenMeteo API endpoints (Archive, Forecast).
 
-    The class implements rate limiting to respect OpenMeteo API quotas across
-    multiple time windows (minutely, hourly, daily) and provides automatic backoff when
-    limits are approached. It also standardizes the data extraction and processing pipeline
-    for weather data retrieval.
-
     Key Features:
     - Multi-tier rate limiting with automatic backoff (minutely/hourly/daily)
     - Cached HTTP sessions with automatic retry logic
@@ -1162,7 +1157,6 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
     1. Chunking requests by calendar year to minimize API costs
     2. Handling partial years at range boundaries
     3. Iterating through geographic coordinate grid
-    4. Implementing progressive rate limiting across time windows
 
     Data Processing:
     - Extracts daily weather variables from API responses
@@ -1192,9 +1186,9 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
         """Retrieve historical weather data from OpenMeteo Archive API.
 
         Executes the complete historical data retrieval workflow including
-        year-based request chunking, geographic iteration, and rate limiting
-        management. The method optimizes API usage by organizing requests
-        into calendar year boundaries.
+        year-based request chunking, and geographic iteration.
+        The method optimizes API usage by organizing requests into
+        calendar year boundaries.
 
         Args:
             url (str): OpenMeteo Archive API endpoint URL. Should be the
@@ -1210,12 +1204,6 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
             - Locations: All coordinate pairs from config.locations grid
             - Total Requests: locations x years
             - API Cost: total_requests x FRACTIONAL_API_COST
-
-        Rate Limiting:
-            The method implements progressive rate limiting across three time windows:
-            - Minutely: 600 requests (61s backoff when exceeded)
-            - Hourly: 5,000 requests (1h backoff when exceeded)
-            - Daily: 10,000 requests (24h backoff when exceeded)
 
         Temporal Boundaries:
             - First year: May start mid-year if history_start_date > Jan 1
@@ -1330,7 +1318,6 @@ class OpenMeteoForecastClient(OpenMeteoClient):
     - Optional past days inclusion (1-5 days) for data continuity
     - Real-time numerical weather prediction model data
     - Geographic grid iteration for multi-location forecasts
-    - Efficient rate limiting with lower API costs than historical data
     - Automatic date range calculation from configuration
 
     API Characteristics:
@@ -1415,12 +1402,6 @@ class OpenMeteoForecastClient(OpenMeteoClient):
             - Temporal Range: past_days ago to forecast_days ahead
             - Total Requests: number of locations
             - API Cost: total_requests x FRACTIONAL_API_COST
-
-        Rate Limiting:
-            Implements the same progressive rate limiting as the base class:
-            - Minutely: 600 requests (61s backoff when exceeded)
-            - Hourly: 5,000 requests (1h backoff when exceeded)
-            - Daily: 10,000 requests (24h backoff when exceeded)
 
         Request Parameters:
             Each API request includes:
