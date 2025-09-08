@@ -1,6 +1,6 @@
 [project]
 name = "openmeteo-client"
-version = "0.1.4"
+version = "0.2.0"
 description = ""
 authors = [{ name = "Jonas Werner", email = "werner-jonas@outlook.com" }]
 readme = "README.md"
@@ -12,6 +12,7 @@ dependencies = [
     "openmeteo_requests (>=1.6.0,<2.0.0)",
     "openmeteo_sdk (>=1.20.1,<2.0.0)",
     "requests-cache (>=1.2.1,<2.0.0)",
+    "tenacity (>=9.1.2,<10.0.0)",
 ]
 
 
