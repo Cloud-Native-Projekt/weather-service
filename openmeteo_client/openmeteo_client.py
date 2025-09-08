@@ -1139,7 +1139,11 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
                     self.weather_api, url, fractional_query_params
                 )
 
-                responses.extend(fractional_responses)
+                if isinstance(fractional_responses, (list, tuple)):
+                    responses.extend(fractional_responses)
+                elif fractional_responses is None:
+                    self.logger.warning("Request did not return a response.")
+                    continue
 
         return responses
 
@@ -1303,7 +1307,11 @@ class OpenMeteoForecastClient(OpenMeteoClient):
                 self.weather_api, url, fractional_query_params
             )
 
-            responses.extend(fractional_responses)
+            if isinstance(fractional_responses, (list, tuple)):
+                responses.extend(fractional_responses)
+            elif fractional_responses is None:
+                self.logger.warning("Request did not return a response.")
+                continue
 
         return responses
 
