@@ -168,11 +168,9 @@ emphasis on reliability, performance, and scalability.
 import json
 import logging
 import os
-import time
 from abc import ABC, abstractmethod
 from dataclasses import InitVar, dataclass, field
 from datetime import date, datetime, timedelta
-from time import sleep
 from typing import Any, Callable, Dict, List, Tuple
 
 import numpy as np
@@ -191,8 +189,6 @@ from tenacity import (
     retry,
     retry_if_exception,
     stop_after_attempt,
-    wait_chain,
-    wait_fixed,
 )
 from tenacity.wait import wait_base
 
