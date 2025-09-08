@@ -161,21 +161,33 @@ and aggregation across the entire system architecture.
 import json
 import logging
 import os
+import time
 from abc import ABC, abstractmethod
 from dataclasses import InitVar, dataclass, field
 from datetime import date, datetime, timedelta
 from time import sleep
-from typing import Any, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 
 import numpy as np
 import openmeteo_requests
 import pandas as pd
 import requests_cache
 from numpy.typing import NDArray
+from openmeteo_requests.Client import OpenMeteoRequestsError
 from openmeteo_sdk.VariablesWithTime import VariablesWithTime
 from openmeteo_sdk.VariableWithValues import VariableWithValues
 from openmeteo_sdk.WeatherApiResponse import WeatherApiResponse
-from retry_requests import retry
+from retry_requests import retry as retry_request
+from tenacity import (
+    RetryCallState,
+    before_sleep_log,
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_chain,
+    wait_fixed,
+)
+from tenacity.wait import wait_base
 
 
 @dataclass
@@ -284,7 +296,7 @@ class OpenMeteoClientConfig:
 
         Supported kwargs:
             history_start_date (str | date): Start date for historical data ("YYYY-MM-DD" or date object)
-            history_end_date (str | date): End date for historical data ("latest", "YYYY-MM-DD", or date object)
+            history_end_date (str | date): End date for historical data ("latest", "YYYY-MM-DD" or date object)
             forecast_days (int): Number of forecast days (1-16 inclusive)
             forecast_past_days (int): Number of past days in forecast (1-5 inclusive)
             bounding_box (Dict[str, float]): Geographic boundaries with keys: north, south, east, west
@@ -625,6 +637,63 @@ class OpenMeteoClientConfig:
             self.__set_metrics(kwargs.get("metrics"))
 
 
+class OpenMeteoAPIBackoff(wait_base):
+    """Custom backoff strategy for OpenMeteo API rate limiting.
+
+    This class implements a specialized wait strategy for handling OpenMeteo API
+    rate limiting scenarios. It provides different backoff periods based on the
+    specific rate limit type that was exceeded (minutely, hourly, or daily).
+
+    The backoff periods are aligned with OpenMeteo's rate limit windows plus
+    a small buffer to ensure the limit has reset before retrying. This prevents
+    repeated rate limit violations while minimizing unnecessary wait times.
+
+    Backoff Periods:
+    - Minutely limit exceeded: 61 seconds (1 minute + 1 second buffer)
+    - Hourly limit exceeded: 3,601 seconds (1 hour + 1 second buffer)
+    - Daily limit exceeded: 86,401 seconds (24 hours + 1 second buffer)
+    - Default (unknown limit): 300 seconds (safe fallback)
+
+    Note:
+        This backoff strategy is specifically tuned for OpenMeteo API
+        characteristics and should not be used with other APIs without
+        modification of the backoff periods.
+    """
+
+    def __call__(self, retry_state: RetryCallState) -> float:
+        """Calculate backoff period based on OpenMeteo rate limit exception type.
+
+        Examines the exception that triggered the retry to determine which
+        rate limit was exceeded and returns the appropriate backoff period.
+        This ensures efficient retry timing aligned with OpenMeteo's rate
+        limit reset windows.
+
+        Args:
+            retry_state (RetryCallState): Tenacity retry state object containing
+                information about the failed attempt, including the exception
+                that caused the failure.
+
+        Returns:
+            float: Backoff period in seconds before the next retry attempt.
+                The value is determined by the type of rate limit exceeded:
+                - 61 seconds for minutely limits
+                - 3,601 seconds for hourly limits
+                - 86,401 seconds for daily limits
+                - 300 seconds for unknown/unrecognized limit types
+        """
+        last_exception = retry_state.outcome.exception()  # type: ignore
+        if isinstance(last_exception, OpenMeteoRequestsError):
+            msg = str(last_exception).lower()
+            if "minutely" in msg:
+                return 61
+            elif "hourly" in msg:
+                return 3601
+            elif "daily" in msg:
+                return 86401
+
+        return 300
+
+
 class OpenMeteoClient(ABC, openmeteo_requests.Client):
     """Abstract base class for OpenMeteo API clients with rate limiting and data processing.
 
@@ -692,7 +761,7 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
         data = client.main()
     """
 
-    SESSION = retry(
+    SESSION = retry_request(
         requests_cache.CachedSession("/tmp/.cache", expire_after=86399),
         retries=10,
         backoff_factor=2,
@@ -753,6 +822,57 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
             and provide comprehensive logging for request monitoring.
         """
         pass
+
+    def fetch_data(self, api_func: Callable, url: str, params):
+        """Fetch weather data from OpenMeteo API with automatic retry on rate limit errors.
+
+        Executes API requests with built-in retry logic specifically designed for OpenMeteo
+        rate limiting scenarios. The method automatically detects rate limit exceptions
+        and applies appropriate backoff strategies based on the specific limit type
+        (minutely, hourly, or daily).
+
+        Args:
+            api_func (Callable): The OpenMeteo API function to execute (typically
+                self.weather_api from the openmeteo_requests.Client). Must accept
+                url and params arguments and return API response data.
+            url (str): Complete OpenMeteo API endpoint URL to request data from.
+                Should match the specific API service (archive, forecast, etc.).
+            params (dict): API request parameters including geographic coordinates,
+                temporal ranges, and requested weather metrics. Structure varies
+                by API endpoint but typically includes latitude, longitude, and
+                daily metrics specifications.
+
+        Returns:
+            List[WeatherApiResponse]: API response objects containing weather data.
+                The exact structure depends on the specific OpenMeteo API endpoint
+                and requested parameters. Responses include meteorological variables
+                and temporal/geographic metadata.
+
+        Exception Handling:
+            - Rate limit errors: Automatic retry with appropriate backoff
+            - Non-rate limit OpenMeteoRequestsError: Propagated after max attempts
+            - Other exceptions: Propagated immediately without retry
+
+        Note:
+            This method is designed for internal use within OpenMeteoClient subclasses
+            and should not be called directly by external code. The retry logic is
+            specifically tuned for OpenMeteo API characteristics and rate limiting
+            behavior.
+        """
+
+        @retry(
+            retry=retry_if_exception(
+                lambda exception: isinstance(exception, OpenMeteoRequestsError)
+                and "limit" in str(exception).lower(),
+            ),
+            wait=OpenMeteoAPIBackoff(),
+            stop=stop_after_attempt(3),
+            before_sleep=before_sleep_log(self.logger, logging.WARNING),
+        )
+        def _fetch():
+            return api_func(url, params=params)
+
+        return _fetch()
 
     def get_request_time_estimate(self, num_requests: int) -> float:
         """Calculate estimated time required for API request batch with rate limiting.
@@ -1146,8 +1266,8 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
                     f"Retrieving historic data for Lat.: {location[0]}° (N), Lon.: {location[1]}° (E) from {start_date} to {end_date}"
                 )
 
-                fractional_responses = self.weather_api(
-                    url, params=fractional_query_params
+                fractional_responses = self.fetch_data(
+                    self.weather_api, url, fractional_query_params
                 )
 
                 responses.append(*fractional_responses)
@@ -1158,12 +1278,12 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
                     daily_usage + OpenMeteoArchiveClient.FRACTIONAL_API_COST,
                 )
 
-                minutely_usage, hourly_usage, daily_usage = self.handle_ratelimit(
-                    minutely_usage,
-                    hourly_usage,
-                    daily_usage,
-                    OpenMeteoArchiveClient.FRACTIONAL_API_COST,
-                )
+                # minutely_usage, hourly_usage, daily_usage = self.handle_ratelimit(
+                #     minutely_usage,
+                #     hourly_usage,
+                #     daily_usage,
+                #     OpenMeteoArchiveClient.FRACTIONAL_API_COST,
+                # )
 
         return responses
 
@@ -1335,7 +1455,9 @@ class OpenMeteoForecastClient(OpenMeteoClient):
                 f"Retrieving forecast data for Lat.: {location[0]}° (N), Lon.: {location[1]}° (E)"
             )
 
-            fractional_responses = self.weather_api(url, params=fractional_query_params)
+            fractional_responses = self.fetch_data(
+                self.weather_api, url, fractional_query_params
+            )
 
             responses.append(*fractional_responses)
 
@@ -1343,13 +1465,6 @@ class OpenMeteoForecastClient(OpenMeteoClient):
                 minutely_usage + OpenMeteoForecastClient.FRACTIONAL_API_COST,
                 hourly_usage + OpenMeteoForecastClient.FRACTIONAL_API_COST,
                 daily_usage + OpenMeteoForecastClient.FRACTIONAL_API_COST,
-            )
-
-            self.handle_ratelimit(
-                minutely_usage,
-                hourly_usage,
-                daily_usage,
-                OpenMeteoForecastClient.FRACTIONAL_API_COST,
             )
 
         return responses
