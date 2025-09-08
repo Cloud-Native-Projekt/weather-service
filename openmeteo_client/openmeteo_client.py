@@ -1141,6 +1141,8 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
 
                 if isinstance(fractional_responses, (list, tuple)):
                     responses.extend(fractional_responses)
+                elif isinstance(fractional_responses, WeatherApiResponse):
+                    responses.append(fractional_responses)
                 elif fractional_responses is None:
                     self.logger.warning("Request did not return a response.")
                     continue
@@ -1309,6 +1311,8 @@ class OpenMeteoForecastClient(OpenMeteoClient):
 
             if isinstance(fractional_responses, (list, tuple)):
                 responses.extend(fractional_responses)
+            elif isinstance(fractional_responses, WeatherApiResponse):
+                responses.append(fractional_responses)
             elif fractional_responses is None:
                 self.logger.warning("Request did not return a response.")
                 continue
