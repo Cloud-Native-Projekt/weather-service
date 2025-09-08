@@ -762,13 +762,6 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
         backoff_factor=2,
     )
 
-    MINUTELY_RATE_LIMIT = 600
-    HOURLY_RATE_LIMIT = 5000
-    DAILY_RATE_LIMIT = 10000
-    MINUTELY_BACKOFF = 61
-    HOURLY_BACKOFF = 3601
-    DAILY_BACKOFF = 86401
-
     def __init__(self, config: OpenMeteoClientConfig):
         """Initialize OpenMeteoClient with configuration and dependencies.
 
@@ -868,120 +861,6 @@ class OpenMeteoClient(ABC, openmeteo_requests.Client):
             return api_func(url, params=params)
 
         return _fetch()
-
-    def get_request_time_estimate(self, num_requests: int) -> float:
-        """Calculate estimated time required for API request batch with rate limiting.
-
-        Estimates the total time needed to complete a batch of API requests
-        considering OpenMeteo rate limits. The calculation accounts for the
-        multi-tier rate limiting system and required backoff periods.
-
-        Args:
-            num_requests (int): Total number of API requests to be made.
-
-        Returns:
-            float: Estimated time in seconds to complete all requests,
-                including rate limiting delays and backoff periods.
-
-        Rate Limit Tiers:
-            - ≤600 requests: No delay (within minutely limit)
-            - 601-5,000 requests: Minutely backoff periods required
-            - 5,001-10,000 requests: Hourly backoff periods required
-            - >10,000 requests: Daily backoff periods required
-        """
-        if num_requests <= OpenMeteoClient.MINUTELY_RATE_LIMIT:
-            time_estimate = 0.0
-        elif (
-            OpenMeteoClient.MINUTELY_RATE_LIMIT
-            < num_requests
-            <= OpenMeteoClient.HOURLY_RATE_LIMIT
-        ):
-            time_estimate = (
-                int(
-                    (num_requests - OpenMeteoClient.MINUTELY_RATE_LIMIT)
-                    / OpenMeteoClient.MINUTELY_RATE_LIMIT
-                )
-                * OpenMeteoClient.MINUTELY_BACKOFF
-            )
-        elif (
-            OpenMeteoClient.HOURLY_RATE_LIMIT
-            < num_requests
-            <= OpenMeteoClient.DAILY_RATE_LIMIT
-        ):
-            time_estimate = (
-                int(
-                    (num_requests - OpenMeteoClient.HOURLY_RATE_LIMIT)
-                    / OpenMeteoClient.HOURLY_RATE_LIMIT
-                )
-                * OpenMeteoClient.HOURLY_BACKOFF
-            )
-        elif OpenMeteoClient.DAILY_RATE_LIMIT < num_requests:
-            time_estimate = (
-                int(
-                    (num_requests - OpenMeteoClient.DAILY_RATE_LIMIT)
-                    / OpenMeteoClient.DAILY_RATE_LIMIT
-                )
-                * OpenMeteoClient.DAILY_BACKOFF
-            )
-        else:
-            time_estimate = 0.0
-
-        return time_estimate
-
-    def handle_ratelimit(
-        self,
-        minutely_usage: float,
-        hourly_usage: float,
-        daily_usage: float,
-        fractional_api_cost: float,
-    ) -> Tuple[float, float, float]:
-        """Manage API rate limiting across multiple time windows.
-
-        Monitors current API usage across minutely, hourly, and daily rate limit
-        windows and enforces backoff periods when limits are approached.
-
-        Args:
-            minutely_usage (float): Current requests used in the current minute window.
-            hourly_usage (float): Current requests used in the current hour window.
-            daily_usage (float): Current requests used in the current day window.
-            fractional_api_cost (float): Cost of the next planned request in API units.
-
-        Returns:
-            Tuple[float, float, float]: Updated usage counters after any backoff
-                periods. Counters are reset when their respective limits trigger
-                backoff periods.
-
-        Rate Limiting Logic:
-            - Minutely limit: Triggers 61-second backoff, resets minutely counter
-            - Hourly limit: Triggers 1-hour backoff, resets minutely and hourly counters
-            - Daily limit: Triggers 24-hour backoff, resets all counters
-
-        Note:
-            This method will block execution during backoff periods using sleep().
-        """
-        if minutely_usage + fractional_api_cost >= OpenMeteoClient.MINUTELY_RATE_LIMIT:
-            self.logger.info(
-                f"Minutely rate limit hit. Backing off for {str(timedelta(seconds=OpenMeteoClient.MINUTELY_BACKOFF))}."
-            )
-            sleep(OpenMeteoClient.MINUTELY_BACKOFF)
-            minutely_usage = 0.0
-        if hourly_usage + fractional_api_cost >= OpenMeteoClient.HOURLY_RATE_LIMIT:
-            self.logger.info(
-                f"Hourly rate limit hit. Backing off for {str(timedelta(seconds=OpenMeteoClient.HOURLY_BACKOFF))}."
-            )
-            sleep(OpenMeteoClient.HOURLY_BACKOFF)
-            minutely_usage = 0.0
-            hourly_usage = 0.0
-        if daily_usage + fractional_api_cost >= OpenMeteoClient.DAILY_RATE_LIMIT:
-            self.logger.info(
-                f"Daily rate limit hit. Backing off for {str(timedelta(seconds=OpenMeteoClient.DAILY_BACKOFF))} seconds."
-            )
-            sleep(OpenMeteoClient.DAILY_BACKOFF)
-            minutely_usage = 0.0
-            hourly_usage = 0.0
-            daily_usage = 0.0
-
-        return (minutely_usage, hourly_usage, daily_usage)
 
     def extract_variable(
         self, variable_index: int, variables: VariablesWithTime
@@ -1220,15 +1099,10 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
         )
 
         num_requests = self.config.locations.shape[0] * len(years)
-        time_estimate = self.get_request_time_estimate(num_requests)
 
         self.logger.info(
-            f"Processing {num_requests} requests costing an estimated {OpenMeteoArchiveClient.FRACTIONAL_API_COST * num_requests} API calls.\nThis will take ~ {str(timedelta(seconds=time_estimate))}"
+            f"Processing {num_requests} requests costing an estimated {OpenMeteoArchiveClient.FRACTIONAL_API_COST * num_requests} API calls."
         )
-
-        minutely_usage = 0.0
-        hourly_usage = 0.0
-        daily_usage = 0.0
 
         for location in self.config.locations:
             for year in years:
@@ -1259,19 +1133,6 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
                 )
 
                 responses.append(*fractional_responses)
-
-                minutely_usage, hourly_usage, daily_usage = (
-                    minutely_usage + OpenMeteoArchiveClient.FRACTIONAL_API_COST,
-                    hourly_usage + OpenMeteoArchiveClient.FRACTIONAL_API_COST,
-                    daily_usage + OpenMeteoArchiveClient.FRACTIONAL_API_COST,
-                )
-
-                # minutely_usage, hourly_usage, daily_usage = self.handle_ratelimit(
-                #     minutely_usage,
-                #     hourly_usage,
-                #     daily_usage,
-                #     OpenMeteoArchiveClient.FRACTIONAL_API_COST,
-                # )
 
         return responses
 
@@ -1413,15 +1274,10 @@ class OpenMeteoForecastClient(OpenMeteoClient):
         responses = []
 
         num_requests = self.config.locations.shape[0]
-        time_estimate = self.get_request_time_estimate(num_requests)
 
         self.logger.info(
-            f"Processing {num_requests} requests costing an estimated {OpenMeteoForecastClient.FRACTIONAL_API_COST * num_requests} API calls.\nThis will take ~ {str(timedelta(seconds=time_estimate))}"
+            f"Processing {num_requests} requests costing an estimated {OpenMeteoForecastClient.FRACTIONAL_API_COST * num_requests} API calls."
         )
-
-        minutely_usage = 0.0
-        hourly_usage = 0.0
-        daily_usage = 0.0
 
         for location in self.config.locations:
             fractional_query_params = {
@@ -1441,12 +1297,6 @@ class OpenMeteoForecastClient(OpenMeteoClient):
             )
 
             responses.append(*fractional_responses)
-
-            minutely_usage, hourly_usage, daily_usage = (
-                minutely_usage + OpenMeteoForecastClient.FRACTIONAL_API_COST,
-                hourly_usage + OpenMeteoForecastClient.FRACTIONAL_API_COST,
-                daily_usage + OpenMeteoForecastClient.FRACTIONAL_API_COST,
-            )
 
         return responses
 
