@@ -684,7 +684,11 @@ class OpenMeteoAPIBackoff(wait_base):
                 - 86,401 seconds for daily limits
                 - 300 seconds for unknown/unrecognized limit types
         """
-        last_exception = retry_state.outcome.exception() if retry_state.outcome and hasattr(retry_state.outcome, "exception") else None
+        last_exception = (
+            retry_state.outcome.exception()
+            if retry_state.outcome and hasattr(retry_state.outcome, "exception")
+            else None
+        )
         if isinstance(last_exception, OpenMeteoRequestsError):
             msg = str(last_exception).lower()
             if "minutely" in msg:
@@ -1135,7 +1139,7 @@ class OpenMeteoArchiveClient(OpenMeteoClient):
                     self.weather_api, url, fractional_query_params
                 )
 
-                responses.append(*fractional_responses)
+                responses.extend(fractional_responses)
 
         return responses
 
@@ -1299,7 +1303,7 @@ class OpenMeteoForecastClient(OpenMeteoClient):
                 self.weather_api, url, fractional_query_params
             )
 
-            responses.append(*fractional_responses)
+            responses.extend(fractional_responses)
 
         return responses
 
