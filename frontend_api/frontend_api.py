@@ -114,14 +114,19 @@ class WeatherDataResponse(BaseModel):
     precipitation_hours: Optional[float]
 
 
+
 class DailyWeatherResponse(WeatherDataResponse):
     date: date
 
+class DailyWeatherMeansResponse(BaseModel):
+    means: dict[str, float]
 
 class WeeklyWeatherResponse(WeatherDataResponse):
     year: int
     week: int
-
+    
+class WeeklyWeatherMeansResponse(BaseModel):
+    means: dict[str, float]
 
 class LocationResponse(BaseModel):
     latitude: float
@@ -359,27 +364,24 @@ async def get_metrics(table: str) -> MetricsResponse:
 
 @app.get(
     "/daily/{datum}/{latitude}/{longitude}/{metrics}",
-    response_model=DailyWeatherResponse | List[DailyWeatherResponse],
+    response_model=DailyWeatherResponse | DailyWeatherMeansResponse,
 )
 async def get_daily_data(
     datum: str,
     latitude: float,
     longitude: float,
     metrics: str,
-) -> DailyWeatherResponse | List[DailyWeatherResponse]:
+) -> DailyWeatherResponse | DailyWeatherMeansResponse:
     """Get daily weather data for specified date(s), location, and metrics.
 
     Args:
-        datum (str): Date in YYYY-MM-DD format, comma-separated dates, or date range (start:end)
-        latitude (float): Latitude coordinate
-        longitude (float): Longitude coordinate
-        metrics (str): Comma-separated list of metrics or 'all'
-
-    Raises:
-        HTTPException: When parameters are invalid or data retrieval fails
+        datum (str): Date (YYYY-MM-DD), comma-separated list or range (start:end)
+        latitude (float): Latitude
+        longitude (float): Longitude
+        metrics (str): Comma-separated metrics or 'all'
 
     Returns:
-        DailyWeatherResponse | List[DailyWeatherResponse]: Weather data response(s)
+        DailyWeatherResponse | DailyWeatherMeansResponse: Weather data response(s)
     """
     try:
         parsed_datum = __parse_datum(datum)
@@ -390,14 +392,22 @@ async def get_daily_data(
             )
 
         elif isinstance(parsed_datum, list):
-            return __process_date_list_request(
+            data = __process_date_list_request(
                 parsed_datum, latitude, longitude, metrics
             )
+            if isinstance(data, list) and len(data) > 1:
+                means = _calculate_means(data)
+                return DailyWeatherMeansResponse(means=means)
+            return data[0] if data else None
 
         elif isinstance(parsed_datum, tuple):
-            return __process_date_range_request(
+            data = __process_date_range_request(
                 parsed_datum, latitude, longitude, metrics
             )
+            if isinstance(data, list) and len(data) > 1:
+                means = _calculate_means(data)
+                return DailyWeatherMeansResponse(means=means)
+            return data[0] if data else None
         else:
             raise HTTPException(
                 status_code=400,
@@ -409,14 +419,14 @@ async def get_daily_data(
 
 @app.get(
     "/weekly/{calendar_week}/{latitude}/{longitude}/{metrics}",
-    response_model=WeeklyWeatherResponse | List[WeeklyWeatherResponse],
+    response_model=WeeklyWeatherResponse | WeeklyWeatherMeansResponse,
 )
 async def get_weekly_data(
     calendar_week: str,
     latitude: float,
     longitude: float,
     metrics: str,
-) -> WeeklyWeatherResponse | List[WeeklyWeatherResponse]:
+) -> WeeklyWeatherResponse | WeeklyWeatherMeansResponse:
     """Get weekly weather data for specified date(s), location, and metrics.
 
     Args:
@@ -429,24 +439,31 @@ async def get_weekly_data(
         HTTPException: When parameters are invalid or data retrieval fails
 
     Returns:
-        WeeklyWeatherResponse | List[WeeklyWeatherResponse]: Weather data response(s)
+        WeeklyWeatherResponse | WeeklyWeatherMeansResponse: Weather data response(s)
     """
     try:
-
         if re.fullmatch(CALENDAR_WEEK_PATTERN, calendar_week):
             return __process_single_week_request(
                 calendar_week, latitude, longitude, metrics
             )
 
         elif re.fullmatch(CALENDAR_WEEK_LIST_PATTERN, calendar_week):
-            return __process_week_list_request(
+            data = __process_week_list_request(
                 calendar_week, latitude, longitude, metrics
             )
+            if isinstance(data, list) and len(data) > 1:
+                means = _calculate_means(data)
+                return WeeklyWeatherMeansResponse(means=means)
+            return data[0] if data else None
 
         elif re.fullmatch(CALENDAR_WEEK_RANGE_PATTERN, calendar_week):
-            return __process_week_range_request(
+            data = __process_week_range_request(
                 calendar_week, latitude, longitude, metrics
             )
+            if isinstance(data, list) and len(data) > 1:
+                means = _calculate_means(data)
+                return WeeklyWeatherMeansResponse(means=means)
+            return data[0] if data else None
         else:
             raise HTTPException(
                 status_code=400,
@@ -454,6 +471,31 @@ async def get_weekly_data(
             )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving data: {e}")
+
+
+def _calculate_means(data_list):
+    """Calculate the means of all numeric fields in a response list.
+
+    Args:
+        data_list: List of response objects (e.g. DailyWeatherResponse).
+
+    Returns:
+        Dictionary with means of all numeric fields (except coordinates and time fields).
+    """
+    import numpy as np
+    if not data_list:
+        return {}
+    # Bestimme alle numerischen Felder (außer Koordinaten und Zeitfelder)
+    numeric_fields = [
+        k for k, v in data_list[0].__dict__.items()
+        if isinstance(v, (int, float)) and k not in ("latitude", "longitude", "year", "week", "date")
+    ]
+    means = {}
+    for field in numeric_fields:
+        values = [getattr(item, field) for item in data_list if getattr(item, field) is not None]
+        if values:
+            means[field] = float(np.mean(values))
+    return means
 
 
 def __get_cols(table: Type[WeatherTable], metrics: str) -> List[Any]:
