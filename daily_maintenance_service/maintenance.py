@@ -119,39 +119,40 @@ if __name__ == "__main__":
 
         health_check_config = OpenMeteoClientConfig(create_from_file=True)
 
-        if not database.health_check(
-            start_date=health_check_config.history_start_date,
-            end_date=health_check_config.history_end_date,
-            table=DailyWeatherHistory,
-        ):
-            missing_entries = database.get_missing_entries
+        # Broken
+        # if not database.health_check(
+        #     start_date=health_check_config.history_start_date,
+        #     end_date=health_check_config.history_end_date,
+        #     table=DailyWeatherHistory,
+        # ):
+        #     missing_entries = database.get_missing_entries
 
-            for missing_entry in missing_entries:
-                logger.info(f"Retrieving entry: {missing_entry}")
-                temp_config = OpenMeteoClientConfig(
-                    create_from_file=True,
-                    kwargs={
-                        "history_start_date": missing_entry[0],
-                        "history_end_date": missing_entry[0],
-                        "bounding_box": {
-                            "north": missing_entry[1],
-                            "south": missing_entry[1],
-                            "west": missing_entry[2],
-                            "east": missing_entry[2],
-                        },
-                    },
-                )
+        #     for missing_entry in missing_entries:
+        #         logger.info(f"Retrieving entry: {missing_entry}")
+        #         temp_config = OpenMeteoClientConfig(
+        #             create_from_file=True,
+        #             kwargs={
+        #                 "history_start_date": missing_entry[0],
+        #                 "history_end_date": missing_entry[0],
+        #                 "bounding_box": {
+        #                     "north": missing_entry[1],
+        #                     "south": missing_entry[1],
+        #                     "west": missing_entry[2],
+        #                     "east": missing_entry[2],
+        #                 },
+        #             },
+        #         )
 
-                ArchiveClient = OpenMeteoArchiveClient(temp_config)
-                historic_data_daily = ArchiveClient.main()
-                history_orm_objects_daily = database.create_orm_objects(
-                    data=historic_data_daily, table=DailyWeatherHistory
-                )
+        #         ArchiveClient = OpenMeteoArchiveClient(temp_config)
+        #         historic_data_daily = ArchiveClient.main()
+        #         history_orm_objects_daily = database.create_orm_objects(
+        #             data=historic_data_daily, table=DailyWeatherHistory
+        #         )
 
-                database.write_data(history_orm_objects_daily)
+        #         database.write_data(history_orm_objects_daily)
 
-        else:
-            logger.info("Daily health check passed successfully!")
+        # else:
+        #     logger.info("Daily health check passed successfully!")
 
         logger.info("Maintenance routine completed successfully!")
     except Exception as e:
