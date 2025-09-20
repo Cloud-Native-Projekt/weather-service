@@ -484,7 +484,7 @@ def _calculate_means(data_list):
     """
     if not data_list:
         return {}
-    # Bestimme alle numerischen Felder (außer Koordinaten und Zeitfelder)
+    # Determine all numeric fields (except coordinates and time fields)
     numeric_fields = [
         k for k, v in data_list[0].__dict__.items()
         if isinstance(v, (int, float)) and k not in ("latitude", "longitude", "year", "week", "date")
