@@ -482,7 +482,6 @@ def _calculate_means(data_list):
     Returns:
         Dictionary with means of all numeric fields (except coordinates and time fields).
     """
-    import numpy as np
     if not data_list:
         return {}
     # Bestimme alle numerischen Felder (außer Koordinaten und Zeitfelder)
