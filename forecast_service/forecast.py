@@ -66,9 +66,11 @@ from weather_models import (
     WeeklyWeatherHistory,
 )
 
+LOGLEVEL = os.getenv("LOGLEVEL", "INFO")
+
 if __name__ == "__main__":
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.LOGLEVEL,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     logger = logging.getLogger(name="Forecast Service")

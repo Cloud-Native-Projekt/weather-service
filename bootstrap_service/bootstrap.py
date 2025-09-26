@@ -80,10 +80,11 @@ BOOTSTRAP_MODE = os.getenv("BOOTSTRAP_MODE", "from_file")
 BOOTSTRAP_FILE = os.getenv(
     "BOOTSTRAP_FILE", os.path.join(os.path.dirname(__file__), "data.csv")
 )
+LOGLEVEL = os.getenv("LOGLEVEL", "INFO")
 
 if __name__ == "__main__":
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.LOGLEVEL,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     logger = logging.getLogger(name="Bootstrap Service")
