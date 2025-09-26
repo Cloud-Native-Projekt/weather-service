@@ -84,7 +84,7 @@ LOGLEVEL = os.getenv("LOGLEVEL", "INFO")
 
 if __name__ == "__main__":
     logging.basicConfig(
-        level=logging.LOGLEVEL,
+        level=LOGLEVEL,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     logger = logging.getLogger(name="Bootstrap Service")
